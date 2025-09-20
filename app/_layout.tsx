@@ -21,6 +21,13 @@ export default function RootLayout() {
           headerShown: false 
         }} 
       />
+      <Stack.Screen 
+        name="gameMap" 
+        options={{ 
+          headerShown: false,
+          title: 'Game Map'
+        }} 
+      />
     </Stack>
   );
 }

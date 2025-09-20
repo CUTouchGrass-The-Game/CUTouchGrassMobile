@@ -1567,7 +1567,7 @@ export default function GameMapScreen() {
                         styles.playerDot,
                         {
                           backgroundColor:
-                            playerRole === 'hider'
+                            playerRole === "hider"
                               ? "#3B82F6"
                               : "#EF4444",
                         },

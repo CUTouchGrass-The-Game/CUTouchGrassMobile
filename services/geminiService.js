@@ -1,8 +1,6 @@
 // geminiService.js
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getDatabase, ref, serverTimestamp, set } from "firebase/database";
 import { useCallback, useState } from "react";
-import { firebaseApp } from "../config/firebaseConfig";
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI("AIzaSyAcrx57mUywYpYyoorKWraViEXxDbiZRLo");
@@ -152,9 +150,9 @@ export const generateAllPromptsForGame = async (gameId) => {
     // Step 1: Generate 10 photo and 10 see prompts in parallel
     console.log("Step 1: Generating initial prompts...");
     const [photoPrompts, seePrompts, cursePrompts] = await Promise.all([
-      generateMultiplePrompts("photo", 10),
-      generateMultiplePrompts("see", 10),
-      generateMultiplePrompts("curse", 3), // Generate 3 curse prompts directly
+      generateMultiplePrompts("photo", 12),
+      generateMultiplePrompts("see", 12),
+      // generateMultiplePrompts("curse", 3), // Generate 3 curse prompts directly
     ]);
 
     console.log(
@@ -164,8 +162,8 @@ export const generateAllPromptsForGame = async (gameId) => {
     // Step 2: Use AI to select the 5 best from each category
     console.log("Step 2: AI selecting best prompts...");
     const [bestPhotoPrompts, bestSeePrompts] = await Promise.all([
-      selectBestPrompts(photoPrompts, "photo", 5),
-      selectBestPrompts(seePrompts, "see", 5),
+      selectBestPrompts(photoPrompts, "photo", 6),
+      selectBestPrompts(seePrompts, "see", 6),
     ]);
 
     console.log(
@@ -175,28 +173,19 @@ export const generateAllPromptsForGame = async (gameId) => {
     // Step 3: Randomly select 2 from each category of best prompts
     console.log("Step 3: Random final selection...");
     const finalPrompts = {
-      photo: randomlySelectFromBest(bestPhotoPrompts, 2),
-      see: randomlySelectFromBest(bestSeePrompts, 2),
-      curse: cursePrompts, // Use all 3 curse prompts
+      photo: randomlySelectFromBest(bestPhotoPrompts, 3),
+      see: randomlySelectFromBest(bestSeePrompts, 3),
+      // curse: cursePrompts, // Use all 3 curse prompts
     };
 
     console.log("Final selection:", {
       photo: finalPrompts.photo,
       see: finalPrompts.see,
-      curse: finalPrompts.curse,
+      // curse: finalPrompts.curse,
     });
 
-    // Step 4: Store in Firebase
-    const db = getDatabase(firebaseApp);
-    const gameRef = ref(db, `games/${gameId}`);
-
-    await set(gameRef, {
-      prompts: finalPrompts,
-      createdAt: serverTimestamp(),
-      status: "ready",
-    });
-
-    console.log("All prompts generated and saved to Firebase");
+    // Step 4: Return prompts directly (removed Firebase database operations)
+    console.log("All prompts generated - returning directly");
     return finalPrompts;
   } catch (error) {
     console.error("Error in generateAllPromptsForGame:", error);

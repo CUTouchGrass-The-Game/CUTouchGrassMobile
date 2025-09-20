@@ -132,6 +132,11 @@ export default function GameMapScreen() {
   const [showAnswerAlert, setShowAnswerAlert] = useState(false);
   const [answerAlertData, setAnswerAlertData] = useState<any>(null);
   const [shownNotifications, setShownNotifications] = useState<Set<string>>(new Set());
+  const [gameTimer, setGameTimer] = useState<number>(60); // 1 minute timer
+  const [gameEnded, setGameEnded] = useState(false);
+  const [gameStartTime, setGameStartTime] = useState<number | null>(null);
+  const [timerData, setTimerData] = useState<any>(null);
+  const [isEndingGame, setIsEndingGame] = useState(false);
   const webViewRef = useRef<any>(null);
 
   useEffect(() => {
@@ -142,6 +147,8 @@ export default function GameMapScreen() {
       listenToAnswers();
       listenToNotifications();
       listenToPhotos();
+      listenToGameTimer();
+      listenToGameStatus();
       // Location tracking will start when gameData is available
     }
     
@@ -161,6 +168,51 @@ export default function GameMapScreen() {
     };
   }, [gameId]);
 
+  // Timer countdown effect
+  useEffect(() => {
+    if (!timerData || !timerData.isActive || gameEnded || isEndingGame) {
+      console.log('Timer effect skipped:', { timerData: !!timerData, isActive: timerData?.isActive, gameEnded, isEndingGame });
+      return;
+    }
+
+    console.log('Starting timer countdown for player role:', playerRole);
+
+    const updateTimer = () => {
+      if (gameEnded || isEndingGame) return; // Additional guard
+      
+      const now = Date.now();
+      const elapsed = now - timerData.startTime;
+      const remaining = Math.max(0, timerData.duration - elapsed);
+      const remainingSeconds = Math.ceil(remaining / 1000);
+      
+      console.log('Timer update:', { remainingSeconds, playerRole });
+      setGameTimer(remainingSeconds);
+      
+      if (remainingSeconds <= 0 && !gameEnded && !isEndingGame) {
+        console.log('Timer reached 0, calling endGame for player role:', playerRole);
+        endGame();
+      } else if (gameEnded || isEndingGame) {
+        console.log('Timer update skipped - game already ending/ended');
+        return;
+      }
+    };
+
+    // Update immediately
+    updateTimer();
+    
+    // Update every second
+    const interval = setInterval(updateTimer, 1000);
+    
+    return () => clearInterval(interval);
+  }, [timerData, gameEnded, isEndingGame, playerRole]);
+
+  // Cleanup effect when game ends
+  useEffect(() => {
+    if (gameEnded) {
+      console.log('Game ended - cleaning up all resources');
+      stopLocationTracking();
+    }
+  }, [gameEnded]);
 
   useEffect(() => {
     if (gameData) startLocationTracking();
@@ -384,14 +436,23 @@ export default function GameMapScreen() {
           setNotifications(notificationsArray);
           
           // Check for new curse, photo, and answer notifications for seekers
+          console.log('Current playerRole:', playerRole);
+          console.log('All notifications:', notificationsArray);
+          console.log('Shown notifications:', Array.from(shownNotifications));
+          
           if (playerRole === 'seeker') {
             notificationsArray.forEach(notification => {
+              console.log('Processing notification:', notification.type, 'ID:', notification.id, 'Already shown:', shownNotifications.has(notification.id));
               if ((notification.type === 'curse' || notification.type === 'photo' || notification.type === 'answer') && !shownNotifications.has(notification.id)) {
+                console.log('NEW SEEKER NOTIFICATION DETECTED:', notification.type, notification);
                 if (notification.type === 'curse') {
+                  console.log('Showing curse notification');
                   showCurseNotification(notification);
                 } else if (notification.type === 'photo') {
+                  console.log('Showing photo notification');
                   showPhotoNotification(notification);
                 } else if (notification.type === 'answer') {
+                  console.log('Showing answer notification');
                   showAnswerNotification(notification);
                 }
                 setShownNotifications(prev => new Set([...prev, notification.id]));
@@ -429,6 +490,80 @@ export default function GameMapScreen() {
     }
   };
 
+  const listenToGameTimer = async () => {
+    try {
+      const db = getDatabase(firebaseApp);
+      const timerRef = ref(db, `games/${gameId}/gameTimer`);
+      
+      onValue(timerRef, (snapshot) => {
+        const data = snapshot.val();
+        console.log('Timer data received:', data);
+        setTimerData(data);
+        if (data && data.isActive) {
+          setGameStartTime(data.startTime);
+          console.log('Timer is active, start time:', data.startTime);
+        } else {
+          setGameStartTime(null);
+          setGameTimer(60);
+          console.log('Timer is not active, resetting to 60');
+        }
+      });
+    } catch (error) {
+      console.error('Error listening to game timer:', error);
+    }
+  };
+
+  const listenToGameStatus = async () => {
+    try {
+      const db = getDatabase(firebaseApp);
+      const statusRef = ref(db, `games/${gameId}/status`);
+      
+      onValue(statusRef, (snapshot) => {
+        const status = snapshot.val();
+        console.log('Game status changed to:', status);
+        
+        if (status === 'ended') {
+          // Game status changed to ended
+          console.log('Game status changed to ended - ending for all players');
+          handleGameEndForAll();
+        }
+      });
+    } catch (error) {
+      console.error('Error listening to game status:', error);
+    }
+  };
+
+  const handleGameEndForAll = () => {
+    if (gameEnded || isEndingGame) {
+      console.log('handleGameEndForAll blocked - already ending or ended');
+      return; // Prevent multiple calls
+    }
+    
+    try {
+      console.log('Handling game end for all players - role:', playerRole);
+      
+      // Set states first to prevent multiple calls
+      setGameEnded(true);
+      setIsEndingGame(true);
+      
+      // Stop all tracking
+      stopLocationTracking();
+      
+      // Navigate to home screen
+      router.push('/');
+      
+      // Show alert after a short delay to ensure navigation happens
+      setTimeout(() => {
+        Alert.alert('Game Ended', 'The game has ended and all players have been returned to the home screen.');
+      }, 100);
+      
+    } catch (error) {
+      console.error('Error in handleGameEndForAll:', error);
+      // Still try to navigate even if there's an error
+      router.push('/');
+    }
+  };
+
   const generateMapHtml = () => {
     if (!location) return;
 
@@ -438,8 +573,25 @@ export default function GameMapScreen() {
     // Generate markers and circles for all players
     const markers = gameLocations.map((loc, index) => {
       const isCurrentPlayer = loc.playerId === currentPlayer?.deviceId;
-      const markerColor = isCurrentPlayer ? 'blue' : 'red';
-      const circleColor = isCurrentPlayer ? '#3B82F6' : '#EF4444';
+      
+      // Determine marker color based on player role (role-based, not current player)
+      let markerColor, circleColor;
+      const playerRole = gameData?.players && Object.keys(gameData.players).length > 0 ? 
+        (Object.values(gameData.players).find((p: any) => p.deviceId === loc.playerId) as any)?.role || null : null;
+      
+      console.log('Map marker for player:', loc.playerName, 'role:', playerRole, 'isCurrentPlayer:', isCurrentPlayer);
+      
+      if (playerRole === 'hider') {
+        markerColor = 'blue';
+        circleColor = '#3B82F6';
+      } else if (playerRole === 'seeker') {
+        markerColor = 'red';
+        circleColor = '#EF4444';
+      } else {
+        // Default to red if role is unknown
+        markerColor = 'red';
+        circleColor = '#EF4444';
+      }
       
       return `
         // Player marker
@@ -514,7 +666,7 @@ export default function GameMapScreen() {
           ${markers}
           
           // Function to update all markers
-          window.updateAllMarkers = function(locations) {
+          window.updateAllMarkers = function(locations, players) {
             // Create a map of existing markers by playerId for quick lookup
             const existingMarkers = {};
             const existingCircles = {};
@@ -543,9 +695,24 @@ export default function GameMapScreen() {
                   existingCircles[loc.playerId].setLatLng([loc.latitude, loc.longitude]);
                 }
               } else {
-                // Create new marker for new player
-                const markerColor = 'red';
-                const circleColor = '#EF4444';
+                // Create new marker for new player with role-based coloring
+                let markerColor, circleColor;
+                
+                // Find player role
+                const playerRole = players ? 
+                  Object.values(players).find(p => p.deviceId === loc.playerId)?.role : null;
+                
+                if (playerRole === 'hider') {
+                  markerColor = 'blue';
+                  circleColor = '#3B82F6';
+                } else if (playerRole === 'seeker') {
+                  markerColor = 'red';
+                  circleColor = '#EF4444';
+                } else {
+                  // Default to red if role is unknown
+                  markerColor = 'red';
+                  circleColor = '#EF4444';
+                }
                 
                 const marker = L.marker([loc.latitude, loc.longitude], {
                   icon: L.divIcon({
@@ -603,7 +770,7 @@ export default function GameMapScreen() {
             try {
               const data = JSON.parse(event.data);
               if (data.type === 'updateMarkers') {
-                window.updateAllMarkers(data.locations);
+                window.updateAllMarkers(data.locations, data.players);
               } else if (data.type === 'updateCurrentPlayerLocation') {
                 window.updateCurrentPlayerLocation(data.latitude, data.longitude);
               }
@@ -633,7 +800,8 @@ export default function GameMapScreen() {
     // Send message to WebView to update markers
     const message = JSON.stringify({
       type: 'updateMarkers',
-      locations: gameLocations
+      locations: gameLocations,
+      players: gameData?.players || {}
     });
     
     webViewRef.current.postMessage(message);
@@ -664,7 +832,8 @@ export default function GameMapScreen() {
             try {
               const db = getDatabase(firebaseApp);
               await set(ref(db, `games/${gameId}/status`), 'in-progress');
-              Alert.alert('Game Started!', 'The game has begun!');
+              await startGameTimer(); // Start the synchronized timer
+              Alert.alert('Game Started!', 'The game has begun! Timer is now running.');
             } catch (error) {
               Alert.alert('Error', 'Failed to start game');
             }
@@ -769,6 +938,13 @@ export default function GameMapScreen() {
         answerData.answer = 'Photo answer';
       }
       
+      // Remove any undefined fields before saving to Firebase
+      Object.keys(answerData).forEach(key => {
+        if (answerData[key] === undefined) {
+          delete answerData[key];
+        }
+      });
+      
       // Store answer in Firebase
       const answersRef = ref(db, `games/${gameId}/answers`);
       const answerRef = push(answersRef);
@@ -780,15 +956,23 @@ export default function GameMapScreen() {
       // Send notification to seeker
       const notificationsRef = ref(db, `games/${gameId}/notifications`);
       const notificationRef = push(notificationsRef);
-      await set(notificationRef, {
+      
+      // Build notification data, only including defined fields
+      const notificationData: any = {
         type: 'answer',
-        message: `${currentPlayer?.name || 'Hider'} answered with ${answerType === 'photo' ? 'a photo' : 'text'}`,
+        message: `${currentPlayer?.name || 'Hider'} answered: "${answerData.answer}"`,
         timestamp: new Date().toISOString(),
         playerName: currentPlayer?.name || 'Unknown Player',
         coinsEarned: coinReward,
-        answerType: answerType,
-        answerPhoto: answerData.answerPhoto
-      });
+        answerType: answerType
+      };
+      
+      // Only include answerPhoto if it exists
+      if (answerData.answerPhoto) {
+        notificationData.answerPhoto = answerData.answerPhoto;
+      }
+      
+      await set(notificationRef, notificationData);
       
       setCoins(newCoinTotal);
       setAnswerInput('');
@@ -913,11 +1097,17 @@ export default function GameMapScreen() {
   };
 
   const openPhoto = (photo: any) => {
-    setSelectedPhoto(photo);
-    setShowPhotoViewer(true);
+    try {
+      console.log('Opening photo:', photo);
+      setSelectedPhoto(photo);
+      setShowPhotoViewer(true);
+    } catch (error) {
+      console.error('Error opening photo:', error);
+    }
   };
 
   const showCurseNotification = (curseData: any) => {
+    console.log('showCurseNotification called with:', curseData);
     setCurseAlertData(curseData);
     setShowCurseAlert(true);
   };
@@ -928,8 +1118,94 @@ export default function GameMapScreen() {
   };
 
   const showAnswerNotification = (answerData: any) => {
+    console.log('showAnswerNotification called with:', answerData);
     setAnswerAlertData(answerData);
-    setShowAnswerAlert(true);
+    // Auto-dismiss after 10 seconds
+    setTimeout(() => {
+      setAnswerAlertData(null);
+    }, 10000);
+  };
+
+  const startGameTimer = async () => {
+    try {
+      console.log('Starting game timer for gameId:', gameId);
+      const db = getDatabase(firebaseApp);
+      const timerRef = ref(db, `games/${gameId}/gameTimer`);
+      const startTime = Date.now();
+      
+      console.log('Setting timer data:', { startTime, duration: 60000, isActive: true });
+      
+      // Set the start time in Firebase
+      await set(timerRef, {
+        startTime: startTime,
+        duration: 60000, // 60 seconds in milliseconds
+        isActive: true
+      });
+      
+      console.log('Timer data saved to Firebase successfully');
+      setGameStartTime(startTime);
+    } catch (error) {
+      console.error('Error starting game timer:', error);
+    }
+  };
+
+  const endGame = async () => {
+    console.log('endGame called for player role:', playerRole, 'isEndingGame:', isEndingGame, 'gameEnded:', gameEnded);
+    
+    if (isEndingGame || gameEnded) {
+      console.log('endGame blocked - already ending or ended');
+      return; // Prevent multiple calls
+    }
+    
+    try {
+      console.log('Starting game end process for player role:', playerRole);
+      setIsEndingGame(true);
+      setGameEnded(true);
+      
+      const db = getDatabase(firebaseApp);
+      
+      // Set status to 'ended' to notify all players
+      console.log('Setting game status to ended to notify all players...');
+      const statusRef = ref(db, `games/${gameId}/status`);
+      await set(statusRef, 'ended');
+      
+      // Stop location tracking
+      stopLocationTracking();
+      
+      console.log('Game status changed to ended - all players will be notified');
+      
+      // Navigate this player immediately (they won't get the listener notification)
+      // Other players will get the listener notification and navigate via handleGameEndForAll
+      router.push('/');
+      
+      // Show alert
+      setTimeout(() => {
+        Alert.alert('Game Ended', 'The game has ended and all players have been returned to the home screen.');
+      }, 100);
+      
+      return; // Prevent further execution
+    } catch (error) {
+      console.error('Error ending game:', error);
+      setIsEndingGame(false); // Reset on error
+    }
+  };
+
+  const handleExitGame = () => {
+    Alert.alert(
+      'End Game',
+      'Are you sure you want to end the game? This will end the game for all players.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'End Game',
+          style: 'destructive',
+          onPress: endGame,
+        },
+      ]
+    );
   };
 
   const handleTakeAnswerPhoto = async () => {
@@ -1014,7 +1290,7 @@ export default function GameMapScreen() {
               // Send notification to seeker about curse usage
               const notificationsRef = ref(db, `games/${gameId}/notifications`);
               const notificationRef = push(notificationsRef);
-              await set(notificationRef, {
+              const curseNotification = {
                 type: 'curse',
                 message: `${currentPlayer?.name || 'Hider'} used ${curse.name}!`,
                 timestamp: new Date().toISOString(),
@@ -1022,7 +1298,9 @@ export default function GameMapScreen() {
                 curseName: curse.name,
                 curseDescription: curse.description,
                 coinsSpent: curse.cost
-              });
+              };
+              console.log('Creating curse notification:', curseNotification);
+              await set(notificationRef, curseNotification);
               
               setCoins(newCoinTotal);
               setShowHiderMenu(false);
@@ -1072,14 +1350,25 @@ export default function GameMapScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backButtonText}>← Back</Text>
+          <TouchableOpacity style={styles.backButton} onPress={handleExitGame}>
+            <Text style={styles.backButtonText}>← Exit</Text>
           </TouchableOpacity>
           <View style={styles.titleContainer}>
             <Text style={styles.title}>Game Map</Text>
             <View style={styles.trackingIndicator}>
               <View style={styles.trackingDot} />
               <Text style={styles.trackingText}>Live</Text>
+            </View>
+            <View style={[
+              styles.timerContainer,
+              gameTimer <= 10 && gameTimer > 0 && styles.timerContainerWarning
+            ]}>
+              <Text style={[
+                styles.timerText,
+                gameTimer <= 10 && gameTimer > 0 && styles.timerTextWarning
+              ]}>
+                ⏱️ {gameStartTime ? `${Math.floor(gameTimer / 60)}:${(gameTimer % 60).toString().padStart(2, '0')}` : 'Ready'}
+              </Text>
             </View>
           </View>
           {isHost && (
@@ -1189,6 +1478,53 @@ export default function GameMapScreen() {
                   <View style={styles.noQuestionCard}>
                     <Text style={styles.noQuestionText}>No active question</Text>
                     <Text style={styles.noQuestionSubtext}>Ask a question to get started!</Text>
+                  </View>
+                )}
+
+                {/* Timer Warning */}
+                {gameStartTime && gameTimer <= 10 && gameTimer > 0 && (
+                  <View style={styles.timerWarningCard}>
+                    <Text style={styles.timerWarningText}>
+                      ⚠️ Game ends in {gameTimer} seconds!
+                    </Text>
+                  </View>
+                )}
+
+                {/* Answer Card - shows when hider answers */}
+                {answerAlertData && (
+                  <View style={styles.answerCard}>
+                    <View style={styles.answerHeader}>
+                      <Text style={styles.answerText}>Answer Received!</Text>
+                      <Text style={styles.answerPlayer}>{answerAlertData.playerName} answered:</Text>
+                    </View>
+                    <Text style={styles.answerContent}>"{answerAlertData.message?.replace(`${answerAlertData.playerName} answered: `, '') || 'Answer received'}"</Text>
+                    {answerAlertData.answerType === 'photo' && answerAlertData.answerPhoto && (
+                      <TouchableOpacity 
+                        onPress={() => openPhoto({
+                          url: answerAlertData.answerPhoto,
+                          uploadedBy: answerAlertData.playerName,
+                          role: 'hider',
+                          timestamp: answerAlertData.timestamp
+                        })}
+                        style={styles.answerPhotoContainer}
+                      >
+                        <Image 
+                          source={{ uri: answerAlertData.answerPhoto }} 
+                          style={styles.answerPhoto}
+                          resizeMode="cover"
+                        />
+                        <Text style={styles.answerPhotoText}>Tap to view full size</Text>
+                      </TouchableOpacity>
+                    )}
+                    {answerAlertData.coinsEarned && (
+                      <Text style={styles.answerCoins}>+{answerAlertData.coinsEarned} coins earned</Text>
+                    )}
+                    <TouchableOpacity 
+                      style={styles.answerDismissButton}
+                      onPress={() => setAnswerAlertData(null)}
+                    >
+                      <Text style={styles.answerDismissText}>Dismiss</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -1548,13 +1884,16 @@ export default function GameMapScreen() {
                             </Text>
                           </View>
                           <Text style={styles.notificationMessage}>{notification.message}</Text>
-                          {notification.photoUrl && (
-                            <TouchableOpacity onPress={() => openPhoto({
-                              url: notification.photoUrl,
-                              uploadedBy: notification.playerName,
-                              role: notification.role,
-                              timestamp: notification.timestamp
-                            })}>
+                            {notification.photoUrl && (
+                              <TouchableOpacity 
+                                onPress={() => openPhoto({
+                                  url: notification.photoUrl,
+                                  uploadedBy: notification.playerName,
+                                  role: notification.role,
+                                  timestamp: notification.timestamp
+                                })}
+                                style={styles.photoClickable}
+                              >
                               <Image 
                                 source={{ uri: notification.photoUrl }} 
                                 style={styles.notificationPhoto}
@@ -1562,13 +1901,16 @@ export default function GameMapScreen() {
                               />
                             </TouchableOpacity>
                           )}
-                          {notification.answerPhoto && (
-                            <TouchableOpacity onPress={() => openPhoto({
-                              url: notification.answerPhoto,
-                              uploadedBy: notification.playerName,
-                              role: 'hider',
-                              timestamp: notification.timestamp
-                            })}>
+                            {notification.answerPhoto && (
+                              <TouchableOpacity 
+                                onPress={() => openPhoto({
+                                  url: notification.answerPhoto,
+                                  uploadedBy: notification.playerName,
+                                  role: 'hider',
+                                  timestamp: notification.timestamp
+                                })}
+                                style={styles.photoClickable}
+                              >
                               <Image 
                                 source={{ uri: notification.answerPhoto }} 
                                 style={styles.notificationPhoto}
@@ -1599,36 +1941,61 @@ export default function GameMapScreen() {
         visible={showPhotoViewer}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setShowPhotoViewer(false)}
+        onRequestClose={() => {
+          console.log('Photo viewer close requested');
+          setShowPhotoViewer(false);
+          setSelectedPhoto(null);
+        }}
       >
-        <View style={styles.photoViewerOverlay}>
-          <View style={styles.photoViewerContainer}>
-            <View style={styles.photoViewerHeader}>
-              <Text style={styles.photoViewerTitle}>
-                {selectedPhoto?.uploadedBy} ({selectedPhoto?.role})
-              </Text>
-              <TouchableOpacity 
-                style={styles.photoViewerCloseButton}
-                onPress={() => setShowPhotoViewer(false)}
-              >
-                <Text style={styles.photoViewerCloseText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            
-            {selectedPhoto && (
-              <View style={styles.photoViewerContent}>
-                <Image 
-                  source={{ uri: selectedPhoto.url }} 
-                  style={styles.photoViewerImage}
-                  resizeMode="contain"
-                />
-                <Text style={styles.photoViewerTimestamp}>
-                  {new Date(selectedPhoto.timestamp).toLocaleString()}
-                </Text>
+        <TouchableWithoutFeedback onPress={() => {
+          console.log('Photo viewer background tapped');
+          setShowPhotoViewer(false);
+          setSelectedPhoto(null);
+        }}>
+          <View style={styles.photoViewerOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.photoViewerContainer}>
+                <View style={styles.photoViewerHeader}>
+                  <Text style={styles.photoViewerTitle}>
+                    {selectedPhoto?.uploadedBy} ({selectedPhoto?.role})
+                  </Text>
+                  <TouchableOpacity 
+                    style={styles.photoViewerCloseButton}
+                    onPress={() => {
+                      console.log('Photo viewer close button pressed');
+                      setShowPhotoViewer(false);
+                      setSelectedPhoto(null);
+                    }}
+                  >
+                    <Text style={styles.photoViewerCloseText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                {selectedPhoto && selectedPhoto.url ? (
+                  <View style={styles.photoViewerContent}>
+                    <Image 
+                      source={{ uri: selectedPhoto.url }} 
+                      style={styles.photoViewerImage}
+                      resizeMode="contain"
+                      onError={(error) => {
+                        console.error('Error loading photo:', error);
+                        setShowPhotoViewer(false);
+                        setSelectedPhoto(null);
+                      }}
+                    />
+                    <Text style={styles.photoViewerTimestamp}>
+                      {new Date(selectedPhoto.timestamp).toLocaleString()}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.photoViewerContent}>
+                    <Text style={styles.photoViewerError}>Photo not available</Text>
+                  </View>
+                )}
               </View>
-            )}
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* Curse Alert Modal */}
@@ -1751,7 +2118,7 @@ export default function GameMapScreen() {
                   </TouchableOpacity>
                 ) : (
                   <View style={styles.answerAlertTextContainer}>
-                    <Text style={styles.answerAlertText}>"{answerAlertData.message?.replace(`${answerAlertData.playerName} answered with text`, '') || 'Text answer'}"</Text>
+                    <Text style={styles.answerAlertText}>"{answerAlertData.message?.replace(`${answerAlertData.playerName} answered: `, '') || 'Text answer'}"</Text>
                   </View>
                 )}
                 
@@ -1831,6 +2198,41 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
+  },
+  timerContainer: {
+    backgroundColor: '#F0F9FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    marginTop: 4,
+  },
+  timerText: {
+    fontSize: 12,
+    color: '#0369A1',
+    fontWeight: '700',
+  },
+  timerContainerWarning: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5',
+  },
+  timerTextWarning: {
+    color: '#DC2626',
+  },
+  timerWarningCard: {
+    backgroundColor: '#FEF2F2',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F87171',
+    marginTop: 8,
+  },
+  timerWarningText: {
+    fontSize: 14,
+    color: '#DC2626',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   startButton: {
     backgroundColor: '#10B981',
@@ -2028,15 +2430,73 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#94A3B8',
   },
-  answerCardContainer: {
-    marginBottom: 8,
-  },
+  // Answer card styles (copied from question card)
   answerCard: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#F0FDF4',
     padding: 16,
     borderRadius: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#F59E0B',
+    borderLeftColor: '#10B981',
+    marginTop: 12,
+  },
+  answerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  answerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  answerPlayer: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '500',
+  },
+  answerContent: {
+    fontSize: 16,
+    color: '#1E293B',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  answerPhotoContainer: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  answerPhoto: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+  },
+  answerPhotoText: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  answerCoins: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  answerDismissButton: {
+    backgroundColor: '#10B981',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignSelf: 'flex-end',
+    marginTop: 8,
+  },
+  answerDismissText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  answerCardContainer: {
+    marginBottom: 8,
   },
   answerInputContainer: {
     marginTop: 12,
@@ -2257,10 +2717,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   notificationPhoto: {
-    width: '100%',
-    height: 150,
+    width: 100,
+    height: 100,
     borderRadius: 8,
     marginTop: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  photoClickable: {
+    alignSelf: 'flex-start',
   },
   cursesList: {
     padding: 20,
@@ -2430,6 +2894,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
     opacity: 0.7,
+  },
+  photoViewerError: {
+    fontSize: 16,
+    color: '#EF4444',
+    textAlign: 'center',
+    padding: 20,
   },
   // Curse alert modal styles
   curseAlertOverlay: {

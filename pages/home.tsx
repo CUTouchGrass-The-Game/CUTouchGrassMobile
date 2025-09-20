@@ -29,11 +29,16 @@ export default function HomeScreen() {
     const unsubscribe = onValue(gameRef, (snapshot) => {
         const gamesData = snapshot.val();
         if (gamesData) {
-            // Update your UI here
-            const gamesArray = Object.entries(gamesData || {}).map(([id, game]) => ({
-                ...({...game, id} as Game)
-              }));
+            // Filter out games with status 'ended'
+            const gamesArray = Object.entries(gamesData || {})
+              .map(([id, game]) => ({
+                id,
+                ...(game as any)
+              }))
+              .filter(game => game.status !== 'ended'); // Only show non-ended games
             setGames(gamesArray);
+        } else {
+            setGames([]);
         }
     });
   
@@ -49,6 +54,8 @@ export default function HomeScreen() {
         return '#F59E0B'; // amber
       case 'finished':
         return '#6B7280'; // gray
+      case 'ended':
+        return '#EF4444'; // red (though these won't be displayed)
       default:
         return '#6B7280';
     }
@@ -62,6 +69,8 @@ export default function HomeScreen() {
         return 'In Progress';
       case 'finished':
         return 'Finished';
+      case 'ended':
+        return 'Ended';
       default:
         return status;
     }

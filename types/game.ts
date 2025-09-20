@@ -4,6 +4,7 @@ export interface Game {
   id: string;
   game: string;
   host: string;
+  status?: string;
 }
 
 export interface GameData {
@@ -15,4 +16,4 @@ export interface GameData {
   createdAt: string;
 }
 
-export type GameStatus = 'waiting' | 'in-progress' | 'finished';
+export type GameStatus = 'waiting' | 'in-progress' | 'finished' | 'ended';

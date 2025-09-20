@@ -28,6 +28,7 @@ import {
 } from "react-native";
 import { WebView } from "react-native-webview";
 import firebaseApp from "../config/firebaseConfig";
+import { generateAllPromptsForGame } from "../services/geminiService";
 import { getStoredDeviceId } from "../util/deviceId";
 
 interface GameLocation {
@@ -43,14 +44,13 @@ const QUESTION_CATEGORIES = {
   zoning: {
     name: "Zoning",
     icon: "🧭",
-    coins: 40,
+    coins: 50,
     color: "#3B82F6",
     questions: [
-      "Are you north or south of the seeker's current latitude?",
-      "Are you east or west of the seeker's current longitude?",
-      "Are the seekers heading in the direction of your current location?",
-      "What cardinal direction are you from the seeker?",
-      "Are you closer to the seeker's starting position or current position?",
+      "Are you north or south of the seeker's current location?",
+      "Are you east or west of the seeker's current location?",
+      "Are the seekers walking towards you?",
+      "Are you higher or lower than the seeker's current altitude?",
     ],
   },
   location: {
@@ -59,11 +59,8 @@ const QUESTION_CATEGORIES = {
     coins: 40,
     color: "#10B981",
     questions: [
-      "What is the name of the nearest library to you?",
-      "What is the name of the nearest eatery location to you?",
-      "What is the name of the nearest park to you?",
-      "What is the name of the nearest shopping center to you?",
-      "What is the name of the nearest landmark to you?",
+      "Is the library closest to you the same as mine?",
+      "Is the eatery location closest to you the same as mine?",
     ],
   },
   radar: {
@@ -72,18 +69,29 @@ const QUESTION_CATEGORIES = {
     coins: 30,
     color: "#F59E0B",
     questions: [
-      "Are you within 100ft, 500ft, 1000ft or 2000ft of me?",
-      "How many city blocks away are you from me?",
-      "Are you within walking distance (5 minutes) of me?",
-      "Can you see me from your current location?",
-      "Are you closer to me than to the nearest bus stop?",
+      "Are you within 100 ft of me?",
+      "Are you within 500 ft of me?",
+      "Are you within 1000 ft of me?",
+      "Are you within 2000 ft of me?",
+    ],
+  },
+  media: {
+    name: "Media",
+    icon: "📷",
+    coins: 15,
+    color: "#99704dff",
+    questions: [
+      "Send a picture of the tallest visible building you can see right now.",
+      "Send a picture of what is directly above you at this moment.",
+      "Send a picture of you touching the nearest plant.",
+      "Send a picture of the nearest bus station.",
     ],
   },
   gemini: {
     name: "Gemini",
     icon: "🤖",
     coins: 20,
-    color: "#8B5CF6",
+    color: "#925cf6ff",
     questions: [
       "Coming soon...",
       "AI-generated questions will appear here",
@@ -313,6 +321,11 @@ export default function GameMapScreen() {
     }
   };
 
+  const onGameStart = async (gameData) => {
+    const geminiPrompts = await generateAllPromptsForGame(gameId);
+    QUESTION_CATEGORIES.gemini.questions = [...geminiPrompts.photo, ...geminiPrompts.see]
+  };
+
   const listenToGameData = async () => {
     try {
       const deviceId = await getStoredDeviceId();
@@ -323,6 +336,13 @@ export default function GameMapScreen() {
         const data = snapshot.val();
         if (data) {
           setGameData(data);
+
+          if (
+            data.status === "in-progress" &&
+            (!gameData || gameData.status !== "in-progress")
+          ) {
+            onGameStart(data);
+          }
 
           // Check if current player is host and get role
           if (data.players) {
@@ -1568,8 +1588,12 @@ export default function GameMapScreen() {
                         {
                           backgroundColor:
                             currentPlayer && playerRole === "hider"
-                              ? index == 1 ? "#3B82F6" : "#EF4444"
-                              : index == 1 ? "#EF4444" : "#3B82F6",
+                              ? index == 1
+                                ? "#3B82F6"
+                                : "#EF4444"
+                              : index == 1
+                              ? "#EF4444"
+                              : "#3B82F6",
                         },
                       ]}
                     />

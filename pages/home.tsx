@@ -96,7 +96,7 @@ export default function HomeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>CU Touch Grass</Text>
-        <Text style={styles.subtitle}>Stop doomscrolling, go outside.</Text>
+        <Text style={styles.subtitle}>Ultimate hide and seek.</Text>
       </View>
 
       {/* Action Buttons */}

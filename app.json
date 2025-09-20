@@ -9,7 +9,12 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location",
+        "NSLocationAlwaysUsageDescription": "Allow $(PRODUCT_NAME) to use your location",
+        "NSLocationWhenInUseUsageDescription": "Allow $(PRODUCT_NAME) to use your location"
+      }
     },
     "android": {
       "adaptiveIcon": {

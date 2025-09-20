@@ -76,6 +76,12 @@ export default function GameScreen() {
   const handleJoinGame = () => {
     if (!gameData) return;
     
+    // If host, go to map screen
+    if (isHost) {
+      router.push(`/gameMap?gameId=${gameId}`);
+      return;
+    }
+    
     // Check if player is already in the game
     if (currentPlayer) {
       Alert.alert(
@@ -285,7 +291,7 @@ export default function GameScreen() {
             onPress={handleJoinGame}
           >
             <Text style={[styles.joinButtonText, currentPlayer && styles.joinedButtonText]}>
-              {currentPlayer ? `Joined as ${currentPlayer.name}` : 'Join Game'}
+              {isHost ? 'View Map' : currentPlayer ? `Joined as ${currentPlayer.name}` : 'Join Game'}
             </Text>
           </TouchableOpacity>
           

@@ -1568,8 +1568,8 @@ export default function GameMapScreen() {
                         {
                           backgroundColor:
                             currentPlayer && playerRole === "hider"
-                              ? index == 0 ? "#3B82F6" : "#EF4444"
-                              : index == 0 ? "#EF4444" : "#3B82F6",
+                              ? index == 1 ? "#3B82F6" : "#EF4444"
+                              : index == 1 ? "#EF4444" : "#3B82F6",
                         },
                       ]}
                     />

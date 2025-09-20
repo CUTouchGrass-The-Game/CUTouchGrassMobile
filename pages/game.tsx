@@ -2,18 +2,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getDatabase, onValue, push, ref, set } from 'firebase/database';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import firebaseApp from '../config/firebaseConfig';
 import { GameData, Player } from '../types';

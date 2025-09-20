@@ -2,18 +2,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getDatabase, onValue, push, ref, set } from 'firebase/database';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import firebaseApp from '../config/firebaseConfig';
 import { GameData, Player } from '../types';
@@ -76,8 +76,11 @@ export default function GameScreen() {
   const handleJoinGame = () => {
     if (!gameData) return;
     
+    console.log('handleJoinGame called:', { isHost, gameId });
+    
     // If host, go to map screen
     if (isHost) {
+      console.log('Navigating to gameMap with gameId:', gameId);
       router.push(`/gameMap?gameId=${gameId}`);
       return;
     }

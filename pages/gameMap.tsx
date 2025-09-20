@@ -1,5 +1,4 @@
 import * as Location from 'expo-location';
-import { MapView, Marker } from 'expo-maps';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getDatabase, onValue, ref, set } from 'firebase/database';
 import React, { useEffect, useState } from 'react';
@@ -12,6 +11,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import firebaseApp from '../config/firebaseConfig';
 import { getStoredDeviceId } from '../util/deviceId';
 
@@ -31,6 +31,7 @@ export default function GameMapScreen() {
   const [gameLocations, setGameLocations] = useState<GameLocation[]>([]);
   const [isHost, setIsHost] = useState(false);
   const [currentPlayer, setCurrentPlayer] = useState<any>(null);
+  const [mapHtml, setMapHtml] = useState<string>('');
 
   useEffect(() => {
     if (gameId) {
@@ -38,6 +39,12 @@ export default function GameMapScreen() {
       listenToGameData();
     }
   }, [gameId]);
+
+  useEffect(() => {
+    if (location && gameLocations.length >= 0) {
+      generateMapHtml();
+    }
+  }, [location, gameLocations]);
 
   const getLocationAsync = async () => {
     try {
@@ -112,6 +119,82 @@ export default function GameMapScreen() {
     }
   };
 
+  const generateMapHtml = () => {
+    if (!location) return;
+
+    const currentLat = location.coords.latitude;
+    const currentLng = location.coords.longitude;
+    
+    // Generate markers for all players
+    const markers = gameLocations.map((loc, index) => {
+      const isCurrentPlayer = loc.playerId === currentPlayer?.deviceId;
+      const markerColor = isCurrentPlayer ? 'blue' : 'red';
+      const markerIcon = isCurrentPlayer ? 'user' : 'user-friends';
+      
+      return `
+        L.marker([${loc.latitude}, ${loc.longitude}], {
+          icon: L.divIcon({
+            className: 'custom-marker',
+            html: '<div style="background-color: ${markerColor}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          })
+        }).addTo(map).bindPopup('<b>${loc.playerName}</b><br>Last seen: ${new Date(loc.timestamp).toLocaleTimeString()}');
+      `;
+    }).join('\n');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Game Map</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <style>
+          body { margin: 0; padding: 0; }
+          #map { height: 100vh; width: 100vw; }
+          .custom-marker { background: none !important; border: none !important; }
+        </style>
+      </head>
+      <body>
+        <div id="map"></div>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+          const map = L.map('map').setView([${currentLat}, ${currentLng}], 15);
+          
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+          }).addTo(map);
+          
+          // Add current player marker
+          L.marker([${currentLat}, ${currentLng}], {
+            icon: L.divIcon({
+              className: 'custom-marker',
+              html: '<div style="background-color: blue; width: 25px; height: 25px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>',
+              iconSize: [25, 25],
+              iconAnchor: [12, 12]
+            })
+          }).addTo(map).bindPopup('<b>You</b><br>Your current location');
+          
+          // Add other players
+          ${markers}
+          
+          // Fit map to show all markers
+          if (${gameLocations.length} > 0) {
+            const group = new L.featureGroup();
+            ${gameLocations.map(loc => `group.addLayer(L.marker([${loc.latitude}, ${loc.longitude}]));`).join('\n')}
+            group.addLayer(L.marker([${currentLat}, ${currentLng}]));
+            map.fitBounds(group.getBounds().pad(0.1));
+          }
+        </script>
+      </body>
+      </html>
+    `;
+    
+    setMapHtml(html);
+  };
+
   const handleStartGame = () => {
     Alert.alert(
       'Start Game?',
@@ -176,44 +259,22 @@ export default function GameMapScreen() {
 
       {/* Map */}
       <View style={styles.mapContainer}>
-        <MapView
-          style={styles.map}
-          initialRegion={{
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          }}
-          showsUserLocation={true}
-          showsMyLocationButton={true}
-        >
-          {/* Current player marker */}
-          <Marker
-            coordinate={{
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-            }}
-            title="You"
-            description={currentPlayer?.name || 'Your location'}
-            pinColor="blue"
+        {mapHtml ? (
+          <WebView
+            source={{ html: mapHtml }}
+            style={styles.map}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            startInLoadingState={true}
+            scalesPageToFit={false}
+            scrollEnabled={false}
+            bounces={false}
           />
-          
-          {/* Other players markers */}
-          {gameLocations
-            .filter(loc => loc.playerId !== (currentPlayer?.deviceId))
-            .map((loc, index) => (
-              <Marker
-                key={index}
-                coordinate={{
-                  latitude: loc.latitude,
-                  longitude: loc.longitude,
-                }}
-                title={loc.playerName}
-                description={`Last seen: ${new Date(loc.timestamp).toLocaleTimeString()}`}
-                pinColor="red"
-              />
-            ))}
-        </MapView>
+        ) : (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Loading map...</Text>
+          </View>
+        )}
       </View>
 
       {/* Player List */}

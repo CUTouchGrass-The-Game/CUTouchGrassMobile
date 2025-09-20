@@ -24,7 +24,8 @@ export default function RootLayout() {
       <Stack.Screen 
         name="gameMap" 
         options={{ 
-          headerShown: false 
+          headerShown: false,
+          title: 'Game Map'
         }} 
       />
     </Stack>

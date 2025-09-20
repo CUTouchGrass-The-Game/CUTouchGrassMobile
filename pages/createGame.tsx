@@ -35,13 +35,15 @@ export default function CreateGameScreen() {
     const gameId = generateId();
     const deviceId = await getStoredDeviceId();
     
+    const hostPlayerId = generateId();
     const gameData = {
       host: hostName,
       game: gameName,
       status: 'waiting',
       createdAt: new Date().toISOString(),
       players: {
-        [generateId()]: {
+        [hostPlayerId]: {
+          id: hostPlayerId,
           name: hostName,
           joinedAt: new Date().toISOString(),
           isHost: true,

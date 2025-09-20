@@ -4,4 +4,5 @@ export interface Player {
   joinedAt: string;
   isHost?: boolean;
   deviceId: string;
+  role?: 'hider' | 'seeker' | null;
 }

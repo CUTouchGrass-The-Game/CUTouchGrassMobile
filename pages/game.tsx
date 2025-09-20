@@ -22,7 +22,6 @@ import { getStoredDeviceId } from '../util/deviceId';
 export default function GameScreen() {
   const router = useRouter();
   const { gameId } = useLocalSearchParams<{ gameId: string }>();
-  console.log("g ",gameId);
   const [gameData, setGameData] = useState<GameData | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +29,8 @@ export default function GameScreen() {
   const [playerName, setPlayerName] = useState('');
   const [currentPlayer, setCurrentPlayer] = useState<Player | null>(null);
   const [isHost, setIsHost] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
 
   useEffect(() => {
     if (gameId) {
@@ -56,6 +57,9 @@ export default function GameScreen() {
           
           // Check if current device is already in the game
           const existingPlayer = playersArray.find(player => player.deviceId === deviceId);
+          console.log('Current deviceId:', deviceId);
+          console.log('Found existing player:', existingPlayer);
+          console.log('All players:', playersArray.map(p => ({ name: p.name, deviceId: p.deviceId })));
           setCurrentPlayer(existingPlayer || null);
           
           // Check if current player is the host
@@ -76,28 +80,16 @@ export default function GameScreen() {
   const handleJoinGame = () => {
     if (!gameData) return;
     
-    console.log('handleJoinGame called:', { isHost, gameId });
+    console.log('handleJoinGame called:', { isHost, gameId, currentPlayer });
     
-    // If host, go to map screen
-    if (isHost) {
+    // If player is already in the game (host or regular player), go to map screen
+    if (currentPlayer) {
       console.log('Navigating to gameMap with gameId:', gameId);
       router.push(`/gameMap?gameId=${gameId}`);
       return;
     }
     
-    // Check if player is already in the game
-    if (currentPlayer) {
-      Alert.alert(
-        'Already Joined', 
-        `You're already in this game as "${currentPlayer.name}". Would you like to change your name?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Change Name', onPress: () => setShowJoinModal(true) }
-        ]
-      );
-      return;
-    }
-    
+    // If not in the game yet, show join modal
     setShowJoinModal(true);
   };
 
@@ -161,6 +153,90 @@ export default function GameScreen() {
     }
   };
 
+  const handleAssignRole = (player: Player) => {
+    setSelectedPlayer(player);
+    setShowRoleModal(true);
+  };
+
+  const handleRoleAssignment = async (role: 'hider' | 'seeker') => {
+    if (!selectedPlayer) return;
+
+    const db = getDatabase(firebaseApp);
+    
+    // Check if role is already taken
+    const existingPlayerWithRole = players.find(p => p.role === role && p.id !== selectedPlayer.id);
+    if (existingPlayerWithRole) {
+      Alert.alert('Role Taken', `${existingPlayerWithRole.name} is already the ${role}.`);
+      return;
+    }
+
+    try {
+      // Find the player by deviceId to get the correct Firebase key
+      const playerKey = Object.keys(gameData?.players || {}).find(key => 
+        gameData?.players[key].deviceId === selectedPlayer.deviceId
+      );
+      
+      if (!playerKey) {
+        Alert.alert('Error', 'Player not found');
+        return;
+      }
+
+      // Update player role using the correct Firebase key
+      const playerRef = ref(db, `games/${gameId}/players/${playerKey}`);
+      await set(playerRef, {
+        ...selectedPlayer,
+        role: role,
+      });
+
+      Alert.alert('Role Assigned', `${selectedPlayer.name} is now the ${role}!`);
+      setShowRoleModal(false);
+      setSelectedPlayer(null);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to assign role');
+      console.error('Error assigning role:', error);
+    }
+  };
+
+  const handleRemoveRole = async (player: Player) => {
+    Alert.alert(
+      'Remove Role',
+      `Remove ${player.name}'s role as ${player.role}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const db = getDatabase(firebaseApp);
+              
+              // Find the player by deviceId to get the correct Firebase key
+              const playerKey = Object.keys(gameData?.players || {}).find(key => 
+                gameData?.players[key].deviceId === player.deviceId
+              );
+              
+              if (!playerKey) {
+                Alert.alert('Error', 'Player not found');
+                return;
+              }
+
+              // Update player role using the correct Firebase key
+              const playerRef = ref(db, `games/${gameId}/players/${playerKey}`);
+              await set(playerRef, {
+                ...player,
+                role: null,
+              });
+              Alert.alert('Role Removed', `${player.name}'s role has been removed.`);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to remove role');
+              console.error('Error removing role:', error);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleStartGame = () => {
     if (!gameData) return;
 
@@ -170,9 +246,18 @@ export default function GameScreen() {
       return;
     }
 
+    // Check if roles are assigned
+    const hider = players.find(p => p.role === 'hider');
+    const seeker = players.find(p => p.role === 'seeker');
+    
+    if (!hider || !seeker) {
+      Alert.alert('Roles Not Assigned', 'Please assign both hider and seeker roles before starting the game.');
+      return;
+    }
+
     Alert.alert(
       'Start Game?',
-      `Are you sure you want to start the game with ${players.length} players?`,
+      `Are you sure you want to start the game?\n\nHider: ${hider.name}\nSeeker: ${seeker.name}`,
       [
         {
           text: 'Cancel',
@@ -185,7 +270,7 @@ export default function GameScreen() {
             
             set(ref(db, `games/${gameId}/status`), 'in-progress')
               .then(() => {
-                Alert.alert('Game Started!', `The game has begun with ${players.length} players!`);
+                Alert.alert('Game Started!', `The game has begun!\n\nHider: ${hider.name}\nSeeker: ${seeker.name}`);
               })
               .catch((error) => {
                 Alert.alert('Error', 'Failed to start game');
@@ -276,12 +361,37 @@ export default function GameScreen() {
                   <Text style={styles.playerJoined}>
                     Joined {new Date(player.joinedAt).toLocaleTimeString()}
                   </Text>
+                  {player.role && (
+                    <View style={[styles.roleBadge, { backgroundColor: player.role === 'hider' ? '#10B981' : '#F59E0B' }]}>
+                      <Text style={styles.roleText}>
+                        {player.role === 'hider' ? '🕵️ Hider' : '🔍 Seeker'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                {player.isHost && (
-                  <View style={styles.hostBadge}>
-                    <Text style={styles.hostBadgeText}>👑</Text>
-                  </View>
-                )}
+                <View style={styles.playerActions}>
+                  {player.isHost && (
+                    <View style={styles.hostBadge}>
+                      <Text style={styles.hostBadgeText}>👑</Text>
+                    </View>
+                  )}
+                  {isHost && (
+                    <TouchableOpacity 
+                      style={styles.assignRoleButton}
+                      onPress={() => handleAssignRole(player)}
+                    >
+                      <Text style={styles.assignRoleText}>Assign Role</Text>
+                    </TouchableOpacity>
+                  )}
+                  {isHost && player.role && (
+                    <TouchableOpacity 
+                      style={styles.removeRoleButton}
+                      onPress={() => handleRemoveRole(player)}
+                    >
+                      <Text style={styles.removeRoleText}>Remove</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             ))
           )}
@@ -294,8 +404,14 @@ export default function GameScreen() {
             onPress={handleJoinGame}
           >
             <Text style={[styles.joinButtonText, currentPlayer && styles.joinedButtonText]}>
-              {isHost ? 'View Map' : currentPlayer ? `Joined as ${currentPlayer.name}` : 'Join Game'}
+              {currentPlayer ? `View Map as ${currentPlayer.name}` : 'Join Game'}
             </Text>
+            {/* Debug info */}
+            {__DEV__ && (
+              <Text style={{ fontSize: 10, color: 'red' }}>
+                Debug: currentPlayer={currentPlayer ? 'exists' : 'null'}
+              </Text>
+            )}
           </TouchableOpacity>
           
           {isHost && gameData.status === 'waiting' && players.length >= 2 && (
@@ -308,6 +424,14 @@ export default function GameScreen() {
             <View style={styles.waitingMessage}>
               <Text style={styles.waitingText}>
                 Waiting for more players... ({players.length}/2 minimum)
+              </Text>
+            </View>
+          )}
+
+          {isHost && gameData.status === 'waiting' && players.length >= 2 && (!players.find(p => p.role === 'hider') || !players.find(p => p.role === 'seeker')) && (
+            <View style={styles.roleMessage}>
+              <Text style={styles.roleMessageText}>
+                Assign hider and seeker roles to start the game
               </Text>
             </View>
           )}
@@ -349,6 +473,76 @@ export default function GameScreen() {
                   <Text style={styles.modalJoinText}>Join</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Role Assignment Modal */}
+      <Modal
+        visible={showRoleModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowRoleModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Assign Role</Text>
+                <TouchableOpacity 
+                  style={styles.closeButton}
+                  onPress={() => setShowRoleModal(false)}
+                >
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={styles.modalSubtitle}>
+                Choose a role for {selectedPlayer?.name}
+              </Text>
+              
+              <View style={styles.roleOptions}>
+                <TouchableOpacity 
+                  style={[styles.roleOption, { backgroundColor: '#10B981' }]}
+                  onPress={() => handleRoleAssignment('hider')}
+                >
+                  <Text style={styles.roleOptionEmoji}>🕵️</Text>
+                  <Text style={styles.roleOptionText}>Hider</Text>
+                  <Text style={styles.roleOptionDescription}>Hide from the seeker</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.roleOption, { backgroundColor: '#F59E0B' }]}
+                  onPress={() => handleRoleAssignment('seeker')}
+                >
+                  <Text style={styles.roleOptionEmoji}>🔍</Text>
+                  <Text style={styles.roleOptionText}>Seeker</Text>
+                  <Text style={styles.roleOptionDescription}>Find the hider</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {selectedPlayer?.role && (
+                <TouchableOpacity 
+                  style={styles.removeRoleButtonModal}
+                  onPress={() => {
+                    handleRemoveRole(selectedPlayer);
+                    setShowRoleModal(false);
+                  }}
+                >
+                  <Text style={styles.removeRoleButtonText}>Remove Current Role</Text>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity 
+                style={styles.modalCancelButton} 
+                onPress={() => setShowRoleModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -528,6 +722,45 @@ const styles = StyleSheet.create({
   playerInfo: {
     flex: 1,
   },
+  playerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  roleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  roleText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  assignRoleButton: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  assignRoleText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  removeRoleButton: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  removeRoleText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
   playerName: {
     fontSize: 16,
     fontWeight: '600',
@@ -594,6 +827,77 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  roleMessage: {
+    backgroundColor: '#FEF3C7',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  roleMessageText: {
+    color: '#92400E',
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  roleOptions: {
+    gap: 12,
+    marginBottom: 24,
+  },
+  roleOption: {
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  roleOptionEmoji: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  roleOptionText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  roleOptionDescription: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    opacity: 0.9,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    fontSize: 18,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  removeRoleButtonModal: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  removeRoleButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

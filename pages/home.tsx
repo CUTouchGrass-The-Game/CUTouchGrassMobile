@@ -29,7 +29,6 @@ export default function HomeScreen() {
     const unsubscribe = onValue(gameRef, (snapshot) => {
         const gamesData = snapshot.val();
         if (gamesData) {
-            console.log('Games: ', gamesData);
             // Update your UI here
             const gamesArray = Object.entries(gamesData || {}).map(([id, game]) => ({
                 ...({...game, id} as Game)

@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import { getDatabase, ref, set } from 'firebase/database';
 import React, { useState } from 'react';
 import {
     Alert,
@@ -11,16 +12,16 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { getDatabase, set, ref } from 'firebase/database';
 import firebaseApp from "../config/firebaseConfig";
-import { generateId } from '@/util/generateId';
+import { getStoredDeviceId } from '../util/deviceId';
+import { generateId } from '../util/generateId';
 
 export default function CreateGameScreen() {
   const router = useRouter();
   const [gameName, setGameName] = useState('');
   const [hostName, setHostName] = useState('');
 
-  const handleCreateGame = () => {
+  const handleCreateGame = async () => {
     if (!gameName.trim()) {
       Alert.alert('Error', 'Please enter a game name');
       return;
@@ -31,19 +32,35 @@ export default function CreateGameScreen() {
     }
 
     const db = getDatabase(firebaseApp);
-    const id = generateId();
-    set(ref(db, 'games/' + id), {
-        host: hostName,
-        game: gameName,
-    });
-
-    // TODO: Implement create game logic with Firebase
-    console.log('Creating game:', { gameName, hostName });
-    Alert.alert('Success', `Game "${gameName}" created successfully!`);
+    const gameId = generateId();
+    const deviceId = await getStoredDeviceId();
     
-    // Reset form
-    setGameName('');
-    setHostName('');
+    const gameData = {
+      host: hostName,
+      game: gameName,
+      status: 'waiting',
+      createdAt: new Date().toISOString(),
+      players: {
+        [generateId()]: {
+          name: hostName,
+          joinedAt: new Date().toISOString(),
+          isHost: true,
+          deviceId: deviceId
+        }
+      }
+    };
+
+    set(ref(db, 'games/' + gameId), gameData).then(() => {
+      Alert.alert('Success', `Game "${gameName}" created successfully!`, [
+        {
+          text: 'OK',
+          onPress: () => router.push(`/game?gameId=${gameId}`)
+        }
+      ]);
+    }).catch((error) => {
+      Alert.alert('Error', 'Failed to create game');
+      console.error('Error creating game:', error);
+    });
   };
 
   return (

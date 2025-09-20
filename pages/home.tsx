@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     SafeAreaView,
     ScrollView,
@@ -10,36 +10,37 @@ import {
     View,
 } from 'react-native';
 
+import firebaseApp from '@/config/firebaseConfig';
+import { getDatabase, onValue, ref } from 'firebase/database';
 import { Game } from '../types';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [games, setGames] = useState<Game[]>([
-    {
-      id: '1',
-      name: 'Jet Lag Adventure #1',
-      players: 3,
-      maxPlayers: 6,
-      status: 'waiting',
-      timeLeft: '2h 15m',
-    },
-    {
-      id: '2',
-      name: 'Time Zone Challenge',
-      players: 5,
-      maxPlayers: 8,
-      status: 'in-progress',
-      timeLeft: '1h 30m',
-    },
-    {
-      id: '3',
-      name: 'Global Race',
-      players: 2,
-      maxPlayers: 4,
-      status: 'waiting',
-      timeLeft: '3h 45m',
-    },
-  ]);
+  const [games, setGames] = useState<Game[]>();
+
+  useEffect(() => {
+    listenToGames();
+  }, [])
+
+  const listenToGames = () => {
+    const db = getDatabase(firebaseApp);
+    const gameRef = ref(db, `games`);
+  
+    const unsubscribe = onValue(gameRef, (snapshot) => {
+        const gamesData = snapshot.val();
+        if (gamesData) {
+            console.log('Games: ', gamesData);
+            // Update your UI here
+            const gamesArray = Object.entries(gamesData || {}).map(([id, game]) => ({
+                ...({...game, id} as Game)
+              }));
+            setGames(gamesArray);
+        }
+    });
+  
+    // Return unsubscribe function to clean up later
+    return unsubscribe;
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -77,8 +78,7 @@ export default function HomeScreen() {
   };
 
   const handleJoinGame = (gameId: string) => {
-    // TODO: Implement join specific game logic
-    console.log(`Joining game ${gameId}...`);
+    router.push(`/game?gameId=${gameId}`);
   };
 
   return (
@@ -98,7 +98,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.secondaryButton} onPress={handleJoinRandomGame}>
-          <Text style={styles.secondaryButtonText}>Join Game</Text>
+          <Text style={styles.secondaryButtonText}>Join Random Game</Text>
         </TouchableOpacity>
       </View>
 
@@ -107,30 +107,36 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>Current Games</Text>
         
         <ScrollView style={styles.gamesList} showsVerticalScrollIndicator={false}>
-          {games.map((game) => (
+          {games && games.map((game, index) => (
             <TouchableOpacity
-              key={game.id}
+              key={index}
               style={styles.gameCard}
               onPress={() => handleJoinGame(game.id)}
             >
               <View style={styles.gameHeader}>
-                <Text style={styles.gameName}>{game.name}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(game.status) }]}>
-                  <Text style={styles.statusText}>{getStatusText(game.status)}</Text>
+                <Text style={styles.gameName}>{game.game}</Text>
+                <View 
+                style={[
+                    styles.statusBadge, 
+                    // { 
+                    //     backgroundColor: getStatusColor(game.status) 
+                    // }
+                ]}>
+                  <Text style={styles.statusText}>{getStatusText(game.host)}</Text>
                 </View>
               </View>
               
-              <View style={styles.gameInfo}>
+              {/* <View style={styles.gameInfo}>
                 <Text style={styles.playerCount}>
                   {game.players}/{game.maxPlayers} players
                 </Text>
                 {game.timeLeft && (
                   <Text style={styles.timeLeft}>⏱️ {game.timeLeft}</Text>
                 )}
-              </View>
+              </View> */}
               
               <View style={styles.joinButton}>
-                <Text style={styles.joinButtonText}>Join Game</Text>
+                <Text style={styles.joinButtonText}>View</Text>
               </View>
             </TouchableOpacity>
           ))}

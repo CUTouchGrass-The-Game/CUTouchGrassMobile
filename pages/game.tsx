@@ -362,7 +362,7 @@ export default function GameScreen() {
                     Joined {new Date(player.joinedAt).toLocaleTimeString()}
                   </Text>
                   {player.role && (
-                    <View style={[styles.roleBadge, { backgroundColor: player.role === 'hider' ? '#10B981' : '#F59E0B' }]}>
+                    <View style={[styles.roleBadge, { backgroundColor: player.role === 'hider' ? '#3B82F6' : '#EF4444' }]}>
                       <Text style={styles.roleText}>
                         {player.role === 'hider' ? '🕵️ Hider' : '🔍 Seeker'}
                       </Text>

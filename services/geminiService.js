@@ -3,11 +3,13 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { useCallback, useState } from "react";
 
 // Initialize Gemini AI
-const genAI = new GoogleGenerativeAI("AIzaSyC6_UjsX4TJuEPmdhlKjzvcuhMbFHTS-lM");
+const genAI = new GoogleGenerativeAI("AIzaSyBYasuLRjg-RxyvSyclXYTrweevUjJBm-o");
 const model = genAI.getGenerativeModel({
   model: "gemini-2.0-flash-exp",
   generationConfig: {
-    temperature: 0.7, // Increased for more variety
+    temperature: 0.9, // Higher temperature for more randomness
+    topP: 0.95, // Nucleus sampling for more variety
+    topK: 40, // Top-k sampling for diverse outputs
   },
 });
 
@@ -37,22 +39,62 @@ const PROMPTS = {
     "their phone use for 10 minutes, or a throw a rock for a certain distance. It shouldn't be too " +
     "annoying to do but should slow down the seekers. Don't just generate ones that walk forwards " +
     "or backwards",
+
+  curseWithPrice:
+    "Generate creative curses for a hide and seek game at Cornell University. Each curse should slow down the seekers " +
+    "but not be too annoying. For each curse, provide:\n" +
+    "1. A catchy name (2-4 words)\n" +
+    "2. A description of what the curse does (1-2 sentences)\n" +
+    "3. A price between 20-50 coins (multiples of 5 only: 20, 25, 30, 35, 40, 45, 50)\n" +
+    "4. The effectiveness level (Low/Medium/High) - higher effectiveness = higher price\n\n" +
+    "Examples:\n" +
+    "- Name: 'Phone Ban'\n" +
+    "- Description: 'Seekers cannot use their phones for 5 minutes'\n" +
+    "- Price: 25\n" +
+    "- Effectiveness: Medium\n\n" +
+    "- Name: 'Library Quest'\n" +
+    "- Description: 'Seekers must find and read one page from any book in the nearest library'\n" +
+    "- Price: 40\n" +
+    "- Effectiveness: High\n\n" +
+    "Make curses creative, Cornell-specific when possible, and vary the difficulty and effectiveness. " +
+    "Avoid curses that are just walking forwards/backwards or too simple.",
 };
 
 // Generate multiple prompts at once to avoid repetition
 const generateMultiplePrompts = async (type, count) => {
+  // Add randomization elements to make prompts more varied
+  const randomElements = [
+    "Focus on different areas of campus",
+    "Include both indoor and outdoor locations", 
+    "Mix easy and challenging tasks",
+    "Consider different times of day",
+    "Think about weather conditions",
+    "Include both academic and social spaces",
+    "Vary the specificity level",
+    "Mix creative and practical approaches"
+  ];
+  
+  const randomElement = randomElements[Math.floor(Math.random() * randomElements.length)];
+  const timestamp = Date.now();
+  
   const batchPrompt = `${CONTEXT}
 
 ${PROMPTS[type]}
 
-Please generate exactly ${count} different and varied ${type} prompts. Number them 1-${count}. Make sure each one is completely different from the others, covering different types of objects, locations, and scenarios. Vary the difficulty and creativity. Format as:
+Please generate exactly ${count} different and varied ${type} prompts. ${randomElement}. 
+Current session: ${timestamp}
+Number them 1-${count}. Make sure each one is completely different from the others, covering different types of objects, locations, and scenarios. Vary the difficulty and creativity. Be creative and think outside the box. Format as:
 1. [prompt]
 2. [prompt]
 3. [prompt]
 ...`;
 
   try {
-    const result = await model.generateContent(batchPrompt);
+    // Add cache-busting and additional randomness
+    const randomSeed = Math.random().toString(36).substring(7);
+    const enhancedPrompt = `${batchPrompt}\n\nRandom seed: ${randomSeed}\nTimestamp: ${Date.now()}`;
+    
+    const result = await model.generateContent(enhancedPrompt);
     const response = await result.response;
     const text = response.text().trim();
 
@@ -83,6 +125,121 @@ Please generate exactly ${count} different and varied ${type} prompts. Number th
     return prompts;
   } catch (error) {
     console.error(`Error generating ${count} ${type} prompts:`, error);
+    throw error;
+  }
+};
+
+// Generate curse prompts with prices, names, and descriptions
+const generateCursePromptsWithPrices = async (count) => {
+  // Different themes for each curse to ensure variety
+  const curseThemes = [
+    "Focus on academic challenges like library tasks, research, or studying",
+    "Include physical activities like walking, running, or climbing", 
+    "Mix technology and analog tasks like using phones vs. paper",
+    "Consider social interactions with other students or staff",
+    "Think about campus-specific locations like dining halls, gyms, or labs",
+    "Include time-based challenges with specific durations",
+    "Mix individual and group tasks requiring teamwork",
+    "Consider seasonal activities and weather conditions",
+    "Focus on creative tasks like drawing, writing, or performing",
+    "Include problem-solving challenges and puzzles",
+    "Think about sensory tasks involving sight, sound, or touch",
+    "Consider transportation challenges around campus"
+  ];
+  
+  // Generate a unique theme for each curse
+  const selectedThemes = [];
+  for (let i = 0; i < count; i++) {
+    let theme;
+    do {
+      theme = curseThemes[Math.floor(Math.random() * curseThemes.length)];
+    } while (selectedThemes.includes(theme) && selectedThemes.length < curseThemes.length);
+    selectedThemes.push(theme);
+  }
+  
+  const timestamp = Date.now();
+  
+  const batchPrompt = `${CONTEXT}
+
+${PROMPTS.curseWithPrice}
+
+Please generate exactly ${count} different and varied curse prompts. Each curse should have a different theme:
+${selectedThemes.map((theme, index) => `${index + 1}. ${theme}`).join('\n')}
+
+Current session: ${timestamp}
+Format each curse as:
+
+Name: [curse name]
+Description: [curse description]
+Price: [price in coins]
+Effectiveness: [Low/Medium/High]
+
+Make sure each curse is completely different from the others, covering different types of challenges and scenarios. Vary the difficulty, effectiveness, and prices. Ensure prices are only multiples of 5 between 20-50. Be creative and think of unique, engaging challenges that match their assigned themes.`;
+
+  try {
+    // Add cache-busting and additional randomness
+    const randomSeed = Math.random().toString(36).substring(7);
+    const enhancedPrompt = `${batchPrompt}\n\nRandom seed: ${randomSeed}\nTimestamp: ${Date.now()}`;
+    
+    const result = await model.generateContent(enhancedPrompt);
+    const response = await result.response;
+    const text = response.text().trim();
+
+    console.log(`Raw curse response:`, text); // Debug log
+
+    // Parse the curse responses
+    const curses = [];
+    const curseBlocks = text.split(/(?=Name:)/).filter(block => block.trim());
+
+    for (const block of curseBlocks) {
+      const lines = block.trim().split('\n').filter(line => line.trim());
+      
+      let name = '';
+      let description = '';
+      let price = 0;
+      let effectiveness = '';
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        
+        if (trimmedLine.startsWith('Name:')) {
+          name = trimmedLine.replace('Name:', '').trim();
+        } else if (trimmedLine.startsWith('Description:')) {
+          description = trimmedLine.replace('Description:', '').trim();
+        } else if (trimmedLine.startsWith('Price:')) {
+          const priceMatch = trimmedLine.match(/Price:\s*(\d+)/);
+          if (priceMatch) {
+            price = parseInt(priceMatch[1]);
+            // Ensure price is a multiple of 5 between 20-50
+            if (price < 20) price = 20;
+            if (price > 50) price = 50;
+            price = Math.round(price / 5) * 5; // Round to nearest multiple of 5
+          }
+        } else if (trimmedLine.startsWith('Effectiveness:')) {
+          effectiveness = trimmedLine.replace('Effectiveness:', '').trim();
+        }
+      }
+
+      // Only add if we have all required fields
+      if (name && description && price > 0 && effectiveness) {
+        curses.push({
+          name,
+          description,
+          price,
+          effectiveness
+        });
+      }
+    }
+
+    console.log(`Parsed ${curses.length} curse prompts:`, curses); // Debug log
+
+    if (curses.length === 0) {
+      throw new Error('Failed to parse any curse prompts from response');
+    }
+
+    return curses;
+  } catch (error) {
+    console.error(`Error generating ${count} curse prompts with prices:`, error);
     throw error;
   }
 };
@@ -142,17 +299,31 @@ const randomlySelectFromBest = (bestPrompts, finalCount) => {
   return shuffled.slice(0, finalCount);
 };
 
+// Shuffle array with additional randomness
+const shuffleWithSeed = (array) => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
+// Export the curse generation function
+export { generateCursePromptsWithPrices };
+
 // Main function to generate all prompts for a game
 export const generateAllPromptsForGame = async (gameId) => {
   try {
     console.log(`Generating optimized prompts for game: ${gameId}`);
 
-    // Step 1: Generate 10 photo and 10 see prompts in parallel
+    // Step 1: Generate photo, see, and curse prompts in parallel
     console.log("Step 1: Generating initial prompts...");
-    const [photoPrompts, seePrompts, cursePrompts] = await Promise.all([
+    const [photoPrompts, seePrompts, cursePrompts, cursePromptsWithPrices] = await Promise.all([
       generateMultiplePrompts("photo", 12),
       generateMultiplePrompts("see", 12),
       generateMultiplePrompts("curse", 6), // Generate 3 curse prompts directly
+      generateCursePromptsWithPrices(3), // Generate 3 structured curse prompts with prices
     ]);
 
     console.log(
@@ -171,18 +342,20 @@ export const generateAllPromptsForGame = async (gameId) => {
       `Selected ${bestPhotoPrompts.length} best photo and ${bestSeePrompts.length} best see prompts`
     );
 
-    // Step 3: Randomly select 2 from each category of best prompts
+    // Step 3: Randomly select and shuffle final prompts
     console.log("Step 3: Random final selection...");
     const finalPrompts = {
-      photo: randomlySelectFromBest(bestPhotoPrompts, 3),
-      see: randomlySelectFromBest(bestSeePrompts, 3),
-      curse: bestCursePrompts, // Use all 3 curse prompts
+      photo: shuffleWithSeed(randomlySelectFromBest(bestPhotoPrompts, 3)),
+      see: shuffleWithSeed(randomlySelectFromBest(bestSeePrompts, 3)),
+      curse: shuffleWithSeed(bestCursePrompts), // Shuffle curse prompts too
+      curseWithPrices: cursePromptsWithPrices, // Include structured curse prompts with prices
     };
 
     console.log("Final selection:", {
       photo: finalPrompts.photo,
       see: finalPrompts.see,
       curse: finalPrompts.curse,
+      curseWithPrices: finalPrompts.curseWithPrices,
     });
 
     // Step 4: Return prompts directly (removed Firebase database operations)

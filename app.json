@@ -76,6 +76,9 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
+    "developer": {
+      "errorOverlay": false
+    },
     "extra": {
       "router": {},
       "eas": {

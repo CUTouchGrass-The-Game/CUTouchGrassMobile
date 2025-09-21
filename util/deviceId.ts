@@ -10,14 +10,6 @@ const DEVICE_ID_KEY = 'device_id';
 export async function getDeviceId(): Promise<string> {
   try {
     // Try to get the device's unique identifier
-    if (Device.osInternalBuildId) {
-      return Device.osInternalBuildId;
-    }
-    
-    // Fallback to device name + model if available
-    if (Device.deviceName && Device.modelName) {
-      return `${Device.deviceName}_${Device.modelName}`.replace(/\s+/g, '_');
-    }
     
     // Final fallback to generated ID
     return generateFallbackId();

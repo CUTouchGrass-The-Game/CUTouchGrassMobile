@@ -13,6 +13,7 @@ import {
 import firebaseApp from '@/config/firebaseConfig';
 import { getDatabase, onValue, ref } from 'firebase/database';
 import { Game } from '../types';
+import { generateAllPromptsForGame, generateCursePromptsWithPrices } from '@/services/geminiService';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -76,9 +77,10 @@ export default function HomeScreen() {
     }
   };
 
-  const handleJoinRandomGame = () => {
+  const handleJoinRandomGame = async () => {
     // TODO: Implement join random game logic
-    console.log('Joining random game...');
+    let geminiPrompts = await generateCursePromptsWithPrices(5);
+    console.log("curses ",geminiPrompts);
   };
 
   const handleCreateGame = () => {

@@ -1,11 +1,12 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getDatabase, onValue, push, ref, set } from 'firebase/database';
+import { get, getDatabase, onValue, push, ref, set } from 'firebase/database';
 import { getDownloadURL, getStorage, ref as storageRef, uploadBytes } from 'firebase/storage';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -23,8 +24,8 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import firebaseApp from '../config/firebaseConfig';
-import { getStoredDeviceId } from '../util/deviceId';
 import { generateAllPromptsForGame } from "../services/geminiService";
+import { getStoredDeviceId } from '../util/deviceId';
 
 interface GameLocation {
   latitude: number;
@@ -100,14 +101,112 @@ const QUESTION_CATEGORIES = {
   }
 };
 
-// Fixed curses for hiders
+const CURSES = [{
+  name: "Bookworm",
+  description: "Read a page of the nearest book out loud.",
+  price: 30,
+  effectiveness: "Medium"
+},
+{
+  name: "Stop Doomscrolling",
+  description: "You're banned from using your phone other than the app for the next 10 minutes.",
+  price: 20,
+  effectiveness: "Low"
+},
+{
+  name: "Acapella Kid",
+  description: "You must record yourself singing the Cornell Alma Mater.",
+  price: 40,
+  effectiveness: "High"
+},
+{
+  name: "Four Leaf Clover",
+  description: "Find a humanities major and take a picture with them.",
+  price: 30,
+  effectiveness: "Medium"
+},
+{
+  name: "Fatal Fields",
+  description: "Go to east campus.",
+  price: 50,
+  effectiveness: "High"
+},
+{
+  name: "The Interviewer",
+  description: "You must ask people to touch grass until they say no.",
+  price: 30,
+  effectiveness: "Medium"
+},
+{
+  name: "Curse of the Right Turn",
+  description: "Only right turns and 180s for the next 10 minutes.",
+  price: 50,
+  effectiveness: "High"
+},
+{
+  name: "Primitive Nature",
+  description: "You must only communciate with sounds for the next 10 minutes.",
+  price: 20,
+  effectiveness: "Low"
+}];
+
+// Fixed curses for hiders - exactly like QUESTION_CATEGORIES
 const HIDER_CURSES = [
-  { name: "Slow Movement", cost: 5, description: "Slows down seeker movement" },
-  { name: "Blind Spot", cost: 10, description: "Hides your location for 30 seconds" },
-  { name: "Fake Location", cost: 15, description: "Shows fake location to seeker" },
-  { name: "Question Block", cost: 8, description: "Blocks one seeker question" },
-  { name: "Coin Steal", cost: 12, description: "Steals 3 coins from seeker" }
-];
+  {
+    name: "Bookworm",
+    description: "Read a page of the nearest book out loud.",
+    price: 30,
+    effectiveness: "Medium"
+  },
+  {
+    name: "Stop Doomscrolling",
+    description: "You're banned from using your phone other than the app for the next 10 minutes.",
+    price: 20,
+    effectiveness: "Low"
+  },
+  {
+    name: "Acapella Kid",
+    description: "You must record yourself singing the Cornell Alma Mater.",
+    price: 40,
+    effectiveness: "High"
+  },
+  {
+    name: "Four Leaf Clover",
+    description: "Find a humanities major and take a picture with them.",
+    price: 30,
+    effectiveness: "Medium"
+  },
+  {
+    name: "Fatal Fields",
+    description: "Go to east campus.",
+    price: 50,
+    effectiveness: "High"
+  },
+  {
+    name: "The Interviewer",
+    description: "You must ask people to touch grass until they say no.",
+    price: 30,
+    effectiveness: "Medium"
+  },
+  {
+    name: "Curse of the Right Turn",
+    description: "Only right turns and 180s for the next 10 minutes.",
+    price: 50,
+    effectiveness: "High"
+  },
+  {
+    name: "Primitive Nature",
+    description: "You must only communciate with sounds for the next 10 minutes.",
+    price: 20,
+    effectiveness: "Low"
+  }
+]
+
+// Helper function to get random curses
+const getRandomCurses = (curses: any[], count: number) => {
+  const shuffled = [...curses].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, count);
+};
 
 export default function GameMapScreen() {
   const router = useRouter();
@@ -150,8 +249,6 @@ export default function GameMapScreen() {
   const [gameStartTime, setGameStartTime] = useState<number | null>(null);
   const [timerData, setTimerData] = useState<any>(null);
   const [isEndingGame, setIsEndingGame] = useState(false);
-  const [isGameEndInitiator, setIsGameEndInitiator] = useState(false);
-  const isGameEndInitiatorRef = useRef(false);
   const [questionCooldown, setQuestionCooldown] = useState(0);
   const [isOnCooldown, setIsOnCooldown] = useState(false);
   const webViewRef = useRef<any>(null);
@@ -177,11 +274,19 @@ export default function GameMapScreen() {
       setIsKeyboardVisible(false);
     });
     
+    // Handle back button to prevent going back
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      console.log('Back button pressed - showing exit confirmation');
+      handleExitGame();
+      return true; // Prevent default back behavior
+    });
+    
     // Cleanup on unmount
     return () => {
       stopLocationTracking();
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
+      backHandler.remove();
     };
   }, [gameId]);
 
@@ -202,12 +307,12 @@ export default function GameMapScreen() {
       const remaining = Math.max(0, timerData.duration - elapsed);
       const remainingSeconds = Math.ceil(remaining / 1000);
       
-      console.log('Timer update:', { remainingSeconds, playerRole });
+     
       setGameTimer(remainingSeconds);
       
       if (remainingSeconds <= 0 && !gameEnded && !isEndingGame) {
-        console.log('Timer reached 0, calling endGame for player role:', playerRole);
-        endGame();
+        console.log('Timer reached 0, calling handleGameEndForAll with timeout for player role:', playerRole);
+        handleGameEndForAll('timeout');
       } else if (gameEnded || isEndingGame) {
         console.log('Timer update skipped - game already ending/ended');
         return;
@@ -269,7 +374,11 @@ export default function GameMapScreen() {
 
   const onGameStart = async () => {
     const geminiPrompts = await generateAllPromptsForGame(gameId);
-    QUESTION_CATEGORIES.gemini.questions = [...geminiPrompts.photo, ...geminiPrompts.see]
+    QUESTION_CATEGORIES.gemini.questions = [...geminiPrompts.photo, ...geminiPrompts.see];
+
+    console.log("Questions loaded:", {
+      questions: QUESTION_CATEGORIES.gemini.questions.length
+    });
   };
 
   const getLocationAsync = async () => {
@@ -549,17 +658,25 @@ export default function GameMapScreen() {
     try {
       const db = getDatabase(firebaseApp);
       const statusRef = ref(db, `games/${gameId}/status`);
+      const winnerRef = ref(db, `games/${gameId}/winner`);
       
       onValue(statusRef, (snapshot) => {
         const status = snapshot.val();
         console.log('Game status changed to:', status);
         
-        if (status === 'ended' && !isGameEndInitiatorRef.current) {
-          // Game status changed to ended (but not by this player)
+        if (status === 'ended') {
+          // Game status changed to ended - handle for all players
           console.log('Game status changed to ended - ending for all players');
-          handleGameEndForAll();
-        } else if (status === 'ended' && isGameEndInitiatorRef.current) {
-          console.log('Game ended by this player - skipping status listener navigation');
+          
+          // Get the winner information
+          get(winnerRef).then((winnerSnapshot) => {
+            const winner = winnerSnapshot.val() || 'timeout';
+            console.log('Winner determined as:', winner, 'from Firebase');
+            handleGameEndForAll(winner);
+          }).catch((error) => {
+            console.error('Error getting winner:', error);
+            handleGameEndForAll('timeout'); // Fallback to timeout
+          });
         }
       });
     } catch (error) {
@@ -567,14 +684,16 @@ export default function GameMapScreen() {
     }
   };
 
-  const handleGameEndForAll = () => {
+  const handleGameEndForAll = (winner: 'hider' | 'seeker' | 'timeout') => {
+    console.log('handleGameEndForAll called with winner:', winner, 'gameEnded:', gameEnded, 'isEndingGame:', isEndingGame);
+    
     if (gameEnded || isEndingGame) {
       console.log('handleGameEndForAll blocked - already ending or ended');
       return; // Prevent multiple calls
     }
     
     try {
-      console.log('Handling game end for all players - role:', playerRole);
+      console.log('Handling game end for all players - role:', playerRole, 'winner:', winner);
       
       // Set states first to prevent multiple calls
       setGameEnded(true);
@@ -583,18 +702,34 @@ export default function GameMapScreen() {
       // Stop all tracking
       stopLocationTracking();
       
-      // Navigate to home screen
-      router.push('/');
+      // Show winner alert
+      let message = '';
+      if (winner === 'hider') {
+        message = 'Congratulations! A winner has been crowned. 👑';
+      } else if (winner === 'seeker') {
+        message = 'Congratulations! A winner has been crowned. 👑';
+      } else {
+        message = 'Congratulations! A winner has been crowned. 👑';
+      }
+      
+      console.log('Showing winner message:', message);
       
       // Show alert after a short delay to ensure navigation happens
       setTimeout(() => {
-        Alert.alert('Game Ended', 'The game has ended and all players have been returned to the home screen.');
+        Alert.alert('Game Ended!', message, [
+          {
+            text: 'OK',
+            onPress: () => {
+              router.replace('/');
+            }
+          }
+        ]);
       }, 100);
       
     } catch (error) {
       console.error('Error in handleGameEndForAll:', error);
       // Still try to navigate even if there's an error
-      router.push('/');
+      router.replace('/');
     }
   };
 
@@ -889,7 +1024,7 @@ export default function GameMapScreen() {
               await set(ref(db, `games/${gameId}/status`), 'in-progress');
               await startGameTimer(); // Start the synchronized timer
               Alert.alert('Game Started!', 'The game has begun! Timer is now running.');
-              onGameStart();
+              onGameStart(); // Load questions and curses
             } catch (error) {
               Alert.alert('Error', 'Failed to start game');
             }
@@ -1226,8 +1361,6 @@ export default function GameMapScreen() {
       console.log('Starting game end process for player role:', playerRole);
       setIsEndingGame(true);
       setGameEnded(true);
-      setIsGameEndInitiator(true); // Mark this player as the initiator
-      isGameEndInitiatorRef.current = true; // Set ref immediately for synchronous access
       
       const db = getDatabase(firebaseApp);
       
@@ -1235,25 +1368,60 @@ export default function GameMapScreen() {
       console.log('Setting game status to ended to notify all players...');
       const statusRef = ref(db, `games/${gameId}/status`);
       await set(statusRef, 'ended');
+      await set(ref(db, `games/${gameId}/winner`), 'timeout'); // Default to timeout for regular end
       
       // Stop location tracking
       stopLocationTracking();
       
       console.log('Game status changed to ended - all players will be notified');
       
-      // Navigate this player immediately (they won't get the listener notification due to isGameEndInitiator flag)
-      // Other players will get the listener notification and navigate via handleGameEndForAll
-      router.push('/');
-      
-      // Show alert
-      setTimeout(() => {
-        Alert.alert('Game Ended', 'The game has ended and all players have been returned to the home screen.');
-      }, 100);
-      
       return; // Prevent further execution
     } catch (error) {
       console.error('Error ending game:', error);
       setIsEndingGame(false); // Reset on error
+    }
+  };
+
+  const handleDeclareWin = () => {
+    Alert.alert(
+      'Declare Win?',
+      'Are you sure you found the hider? This will end the game and declare you as the winner.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Declare Win',
+          style: 'default',
+          onPress: () => {
+            endGameWithWinner('seeker');
+          }
+        }
+      ]
+    );
+  };
+
+  const endGameWithWinner = async (winner: 'hider' | 'seeker') => {
+    if (isEndingGame || gameEnded) return;
+    
+    console.log('endGameWithWinner called with winner:', winner);
+    setIsEndingGame(true);
+    setGameEnded(true);
+    
+    try {
+      const db = getDatabase(firebaseApp);
+      console.log('Storing winner in Firebase:', winner);
+      await set(ref(db, `games/${gameId}/status`), 'ended');
+      await set(ref(db, `games/${gameId}/winner`), winner); // Store the winner
+      console.log('Winner stored successfully:', winner);
+      
+      // Stop location tracking and timer
+      stopLocationTracking();
+      
+      // Don't call handleGameEndForAll immediately - let the status listener handle it
+      // This prevents double messages
+      
+    } catch (error) {
+      console.error('Error ending game with winner:', error);
+      setIsEndingGame(false);
     }
   };
 
@@ -1326,15 +1494,16 @@ export default function GameMapScreen() {
   };
 
   // Hider functions
-  const handleUseCurse = async (curse: typeof HIDER_CURSES[0]) => {
-    if (coins < curse.cost) {
-      Alert.alert('Not Enough Coins', `You need ${curse.cost} coins to use this curse.`);
+  const handleUseCurse = async (curse: any) => {
+    const curseCost = curse.price || curse.cost;
+    if (coins < curseCost) {
+      Alert.alert('Not Enough Coins', `You need ${curseCost} coins to use this curse.`);
       return;
     }
 
     Alert.alert(
       'Use Curse?',
-      `Use ${curse.name} for ${curse.cost} coins?\n\n${curse.description}`,
+      `Use ${curse.name} for ${curseCost} coins?\n\n${curse.description}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -1343,7 +1512,7 @@ export default function GameMapScreen() {
             try {
               const deviceId = await getStoredDeviceId();
               const db = getDatabase(firebaseApp);
-              const newCoinTotal = coins - curse.cost;
+              const newCoinTotal = coins - curseCost;
               
               // Update player's coins in Firebase
               const playerKey = Object.keys(gameData?.players || {}).find(key => 
@@ -1364,7 +1533,7 @@ export default function GameMapScreen() {
                 playerName: currentPlayer?.name || 'Unknown Player',
                 curseName: curse.name,
                 curseDescription: curse.description,
-                coinsSpent: curse.cost
+                coinsSpent: curseCost
               };
               console.log('Creating curse notification:', curseNotification);
               await set(notificationRef, curseNotification);
@@ -1536,6 +1705,12 @@ export default function GameMapScreen() {
                       <Text style={styles.menuButtonText}>Activity ({notifications.length})</Text>
                     </TouchableOpacity>
                   )}
+                  <TouchableOpacity 
+                    style={[styles.menuButton, styles.declareWinButton]}
+                    onPress={handleDeclareWin}
+                  >
+                    <Text style={styles.menuButtonText}>🏆 Declare Win</Text>
+                  </TouchableOpacity>
                   
                 </View>
                 
@@ -1906,37 +2081,51 @@ export default function GameMapScreen() {
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.cursesList} showsVerticalScrollIndicator={false}>
-              {HIDER_CURSES.map((curse, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.curseItem,
-                    coins < curse.cost && styles.curseItemDisabled
-                  ]}
-                  onPress={() => handleUseCurse(curse)}
-                  disabled={coins < curse.cost}
-                >
-                  <View style={styles.curseInfo}>
-                    <Text style={[
-                      styles.curseName,
-                      coins < curse.cost && styles.curseNameDisabled
+              {HIDER_CURSES.map((curse, index) => {
+                const curseCost = curse.price;
+                
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.questionItem,
+                      coins < curseCost && styles.curseItemDisabled,
+                      { borderLeftColor: "#F59E0B" }
+                    ]}
+                    onPress={() => handleUseCurse(curse)}
+                    disabled={coins < curseCost}
+                  >
+                    <View style={styles.questionItemContent}>
+                      <Text style={[
+                        styles.questionItemText,
+                        coins < curseCost && styles.curseNameDisabled
+                      ]}>
+                        {curse.name}
+                      </Text>
+                      <Text style={styles.curseDescription}>{curse.description}</Text>
+                      {curse.effectiveness && (
+                        <Text style={styles.curseEffectiveness}>
+                          Effectiveness: {curse.effectiveness}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={[
+                      styles.questionReward,
+                      coins < curseCost && styles.curseCostDisabled
                     ]}>
-                      {curse.name}
-                    </Text>
-                    <Text style={styles.curseDescription}>{curse.description}</Text>
-                  </View>
-                  <View style={styles.curseCost}>
-                    <Text style={[
-                      styles.curseCostText,
-                      coins < curse.cost && styles.curseCostTextDisabled
-                    ]}>
-                      💰 {curse.cost}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                      <Text style={[
+                        styles.questionRewardText,
+                        coins < curseCost && styles.curseCostTextDisabled,
+                        { color: "#F59E0B" }
+                      ]}>
+                        💰 {curseCost}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
         </View>
@@ -2411,10 +2600,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
   },
   loadingText: {
     fontSize: 16,
     color: '#64748B',
+    textAlign: 'center',
   },
   // Role-based UI styles
   roleUI: {
@@ -2444,6 +2635,9 @@ const styles = StyleSheet.create({
   },
   activityButton: {
     backgroundColor: '#10B981',
+  },
+  declareWinButton: {
+    backgroundColor: '#F59E0B',
   },
   photoButton: {
     backgroundColor: '#8B5CF6',
@@ -2709,6 +2903,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     flex: 1,
   },
+  questionItemContent: {
+    flex: 1,
+    marginRight: 12,
+  },
   questionReward: {
     marginTop: 8,
     alignSelf: 'flex-end',
@@ -2884,6 +3082,16 @@ const styles = StyleSheet.create({
   },
   curseCostTextDisabled: {
     color: '#94A3B8',
+  },
+  curseEffectiveness: {
+    fontSize: 11,
+    color: '#8B5CF6',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  curseCostDisabled: {
+    backgroundColor: '#F1F5F9',
+    opacity: 0.6,
   },
   // Activity feed modal styles
   activityFeedList: {

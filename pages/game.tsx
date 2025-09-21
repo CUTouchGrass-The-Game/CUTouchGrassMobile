@@ -57,9 +57,9 @@ export default function GameScreen() {
           
           // Check if current device is already in the game
           const existingPlayer = playersArray.find(player => player.deviceId === deviceId);
-          console.log('Current deviceId:', deviceId);
-          console.log('Found existing player:', existingPlayer);
-          console.log('All players:', playersArray.map(p => ({ name: p.name, deviceId: p.deviceId })));
+          // console.log('Current deviceId:', deviceId);
+          // console.log('Found existing player:', existingPlayer);
+          // console.log('All players:', playersArray.map(p => ({ name: p.name, deviceId: p.deviceId })));
           setCurrentPlayer(existingPlayer || null);
           
           // Check if current player is the host

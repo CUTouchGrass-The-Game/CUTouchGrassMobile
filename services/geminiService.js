@@ -154,7 +154,7 @@ export const generateAllPromptsForGame = async (gameId) => {
     const [photoPrompts, seePrompts, cursePrompts] = await Promise.all([
       generateMultiplePrompts("photo", 10),
       generateMultiplePrompts("see", 10),
-      generateMultiplePrompts("curse", 3), // Generate 3 curse prompts directly
+      generateMultiplePrompts("curse", 6), // Generate 3 curse prompts directly
     ]);
 
     console.log(
@@ -163,9 +163,10 @@ export const generateAllPromptsForGame = async (gameId) => {
 
     // Step 2: Use AI to select the 5 best from each category
     console.log("Step 2: AI selecting best prompts...");
-    const [bestPhotoPrompts, bestSeePrompts] = await Promise.all([
+    const [bestPhotoPrompts, bestSeePrompts, bestCursePrompts] = await Promise.all([
       selectBestPrompts(photoPrompts, "photo", 5),
       selectBestPrompts(seePrompts, "see", 5),
+      selectBestPrompts(cursePrompts, "curse", 3),
     ]);
 
     console.log(
@@ -177,7 +178,7 @@ export const generateAllPromptsForGame = async (gameId) => {
     const finalPrompts = {
       photo: randomlySelectFromBest(bestPhotoPrompts, 2),
       see: randomlySelectFromBest(bestSeePrompts, 2),
-      curse: cursePrompts, // Use all 3 curse prompts
+      curse: bestCursePrompts, // Use all 3 curse prompts
     };
 
     console.log("Final selection:", {

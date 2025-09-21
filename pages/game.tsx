@@ -407,11 +407,11 @@ export default function GameScreen() {
               {currentPlayer ? `View Map as ${currentPlayer.name}` : 'Join Game'}
             </Text>
             {/* Debug info */}
-            {__DEV__ && (
+            {/* {__DEV__ && (
               <Text style={{ fontSize: 10, color: 'red' }}>
                 Debug: currentPlayer={currentPlayer ? 'exists' : 'null'}
               </Text>
-            )}
+            )} */}
           </TouchableOpacity>
           
           {isHost && gameData.status === 'waiting' && players.length >= 2 && (

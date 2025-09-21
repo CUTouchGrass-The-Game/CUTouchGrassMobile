@@ -24,6 +24,7 @@ import {
 import { WebView } from 'react-native-webview';
 import firebaseApp from '../config/firebaseConfig';
 import { getStoredDeviceId } from '../util/deviceId';
+import { generateAllPromptsForGame } from "../services/geminiService";
 
 interface GameLocation {
   latitude: number;
@@ -73,6 +74,18 @@ const QUESTION_CATEGORIES = {
       "Can you see me from your current location?",
       "Are you closer to me than to the nearest bus stop?"
     ]
+  },
+  media: {
+    name: "Media",
+    icon: "📷",
+    coins: 15,
+    color: "#99704dff",
+    questions: [
+      "Send a picture of the tallest visible building you can see right now.",
+      "Send a picture of what is directly above you at this moment.",
+      "Send a picture of you touching the nearest plant.",
+      "Send a picture of the nearest bus station.",
+    ],
   },
   gemini: {
     name: "Gemini",
@@ -139,6 +152,8 @@ export default function GameMapScreen() {
   const [isEndingGame, setIsEndingGame] = useState(false);
   const [isGameEndInitiator, setIsGameEndInitiator] = useState(false);
   const isGameEndInitiatorRef = useRef(false);
+  const [questionCooldown, setQuestionCooldown] = useState(0);
+  const [isOnCooldown, setIsOnCooldown] = useState(false);
   const webViewRef = useRef<any>(null);
 
   useEffect(() => {
@@ -208,6 +223,23 @@ export default function GameMapScreen() {
     return () => clearInterval(interval);
   }, [timerData, gameEnded, isEndingGame, playerRole]);
 
+  // Question cooldown effect
+  useEffect(() => {
+    if (!isOnCooldown || questionCooldown <= 0) return;
+
+    const updateCooldown = () => {
+      setQuestionCooldown(prev => {
+        if (prev <= 1) {
+          setIsOnCooldown(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    };
+
+    const interval = setInterval(updateCooldown, 1000);
+    return () => clearInterval(interval);
+  }, [isOnCooldown, questionCooldown]);
 
   useEffect(() => {
     if (gameData) startLocationTracking();
@@ -234,6 +266,11 @@ export default function GameMapScreen() {
       updateCurrentPlayerLocation();
     }
   }, [location]);
+
+  const onGameStart = async () => {
+    const geminiPrompts = await generateAllPromptsForGame(gameId);
+    QUESTION_CATEGORIES.gemini.questions = [...geminiPrompts.photo, ...geminiPrompts.see]
+  };
 
   const getLocationAsync = async () => {
     try {
@@ -852,6 +889,7 @@ export default function GameMapScreen() {
               await set(ref(db, `games/${gameId}/status`), 'in-progress');
               await startGameTimer(); // Start the synchronized timer
               Alert.alert('Game Started!', 'The game has begun! Timer is now running.');
+              onGameStart();
             } catch (error) {
               Alert.alert('Error', 'Failed to start game');
             }
@@ -863,6 +901,11 @@ export default function GameMapScreen() {
 
   // Seeker functions
   const handleAskQuestion = async (question: string, category: string) => {
+    if (isOnCooldown) {
+      Alert.alert('Cooldown Active', `Please wait ${questionCooldown} seconds before asking another question.`);
+      return;
+    }
+
     try {
       const db = getDatabase(firebaseApp);
       const questionsRef = ref(db, `games/${gameId}/questions`);
@@ -896,6 +939,10 @@ export default function GameMapScreen() {
         category: category,
         coins: QUESTION_CATEGORIES[category as keyof typeof QUESTION_CATEGORIES]?.coins || 20
       });
+
+      // Start 3-minute cooldown
+      setQuestionCooldown(180); // 3 minutes = 180 seconds
+      setIsOnCooldown(true);
 
       setCurrentQuestion(question);
       setCurrentQuestionCategory(category);
@@ -1457,10 +1504,20 @@ export default function GameMapScreen() {
                 </View>
                 <View style={styles.seekerButtons}>
                   <TouchableOpacity 
-                    style={[styles.menuButton, styles.questionsButton]}
+                    style={[
+                      styles.menuButton, 
+                      styles.questionsButton,
+                      isOnCooldown && styles.disabledButton
+                    ]}
                     onPress={() => setShowSeekerMenu(true)}
+                    disabled={isOnCooldown}
                   >
-                    <Text style={styles.menuButtonText}>Questions</Text>
+                    <Text style={[
+                      styles.menuButtonText,
+                      isOnCooldown && styles.disabledButtonText
+                    ]}>
+                      {isOnCooldown ? `Questions (${Math.floor(questionCooldown / 60)}:${(questionCooldown % 60).toString().padStart(2, '0')})` : 'Questions'}
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={[styles.menuButton, styles.photoButton]}
@@ -1728,15 +1785,29 @@ export default function GameMapScreen() {
             {/* Player List */}
             <View style={styles.playerList}>
               <Text style={styles.playerListTitle}>Players on Map ({gameLocations.length})</Text>
-              {gameLocations.map((loc, index) => (
-                <View key={index} style={styles.playerItem}>
-                  <View style={[styles.playerDot, { backgroundColor: loc.playerId === currentPlayer?.deviceId ? '#3B82F6' : '#EF4444' }]} />
-                  <Text style={styles.playerName}>{loc.playerName}</Text>
-                  <Text style={styles.playerTime}>
-                    {new Date(loc.timestamp).toLocaleTimeString()}
-                  </Text>
-                </View>
-              ))}
+              {gameLocations.map((loc, index) => {
+                // Determine player role for coloring
+                const playerRole = gameData?.players && Object.keys(gameData.players).length > 0 ? 
+                  (Object.values(gameData.players).find((p: any) => p.deviceId === loc.playerId) as any)?.role || null : null;
+                
+                // Color based on role: hider = blue, seeker = red
+                let dotColor = '#EF4444'; // Default to red
+                if (playerRole === 'hider') {
+                  dotColor = '#3B82F6'; // Blue for hiders
+                } else if (playerRole === 'seeker') {
+                  dotColor = '#EF4444'; // Red for seekers
+                }
+                
+                return (
+                  <View key={index} style={styles.playerItem}>
+                    <View style={[styles.playerDot, { backgroundColor: dotColor }]} />
+                    <Text style={styles.playerName}>{loc.playerName}</Text>
+                    <Text style={styles.playerTime}>
+                      {new Date(loc.timestamp).toLocaleTimeString()}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
             </ScrollView>
           </TouchableWithoutFeedback>
@@ -1912,12 +1983,7 @@ export default function GameMapScreen() {
                           <Text style={styles.notificationMessage}>{notification.message}</Text>
                             {notification.photoUrl && (
                               <TouchableOpacity 
-                                onPress={() => openPhoto({
-                                  url: notification.photoUrl,
-                                  uploadedBy: notification.playerName,
-                                  role: notification.role,
-                                  timestamp: notification.timestamp
-                                })}
+                                disabled={true}
                                 style={styles.photoClickable}
                               >
                               <Image 
@@ -1929,12 +1995,7 @@ export default function GameMapScreen() {
                           )}
                             {notification.answerPhoto && (
                               <TouchableOpacity 
-                                onPress={() => openPhoto({
-                                  url: notification.answerPhoto,
-                                  uploadedBy: notification.playerName,
-                                  role: 'hider',
-                                  timestamp: notification.timestamp
-                                })}
+                                disabled={true}
                                 style={styles.photoClickable}
                               >
                               <Image 
@@ -2284,6 +2345,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  disabledButton: {
+    backgroundColor: '#E2E8F0',
+    opacity: 0.6,
+  },
+  disabledButtonText: {
+    color: '#94A3B8',
   },
   mapContainer: {
     height: 300,

@@ -149,10 +149,10 @@ export const generateAllPromptsForGame = async (gameId) => {
 
     // Step 1: Generate 10 photo and 10 see prompts in parallel
     console.log("Step 1: Generating initial prompts...");
-    const [photoPrompts, seePrompts, /* cursePrompts */] = await Promise.all([
+    const [photoPrompts, seePrompts, cursePrompts] = await Promise.all([
       generateMultiplePrompts("photo", 12),
       generateMultiplePrompts("see", 12),
-      // generateMultiplePrompts("curse", 3), // Generate 3 curse prompts directly
+      generateMultiplePrompts("curse", 6), // Generate 3 curse prompts directly
     ]);
 
     console.log(
@@ -161,9 +161,10 @@ export const generateAllPromptsForGame = async (gameId) => {
 
     // Step 2: Use AI to select the 5 best from each category
     console.log("Step 2: AI selecting best prompts...");
-    const [bestPhotoPrompts, bestSeePrompts] = await Promise.all([
+    const [bestPhotoPrompts, bestSeePrompts, bestCursePrompts] = await Promise.all([
       selectBestPrompts(photoPrompts, "photo", 6),
       selectBestPrompts(seePrompts, "see", 6),
+      selectBestPrompts(cursePrompts, "curse", 3),
     ]);
 
     console.log(
@@ -175,13 +176,13 @@ export const generateAllPromptsForGame = async (gameId) => {
     const finalPrompts = {
       photo: randomlySelectFromBest(bestPhotoPrompts, 3),
       see: randomlySelectFromBest(bestSeePrompts, 3),
-      // curse: cursePrompts, // Use all 3 curse prompts
+      curse: bestCursePrompts, // Use all 3 curse prompts
     };
 
     console.log("Final selection:", {
       photo: finalPrompts.photo,
       see: finalPrompts.see,
-      // curse: finalPrompts.curse,
+      curse: finalPrompts.curse,
     });
 
     // Step 4: Return prompts directly (removed Firebase database operations)

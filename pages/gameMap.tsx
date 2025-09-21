@@ -230,6 +230,7 @@ export default function GameMapScreen() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [photos, setPhotos] = useState<any[]>([]);
+  const [curses, setCurses] = useState<any[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<any>(null);
@@ -257,6 +258,7 @@ export default function GameMapScreen() {
       listenToAnswers();
       listenToNotifications();
       listenToPhotos();
+      listenToCurses();
       listenToGameTimer();
       listenToGameStatus();
       // Location tracking will start when gameData is available
@@ -625,6 +627,28 @@ export default function GameMapScreen() {
       return unsubscribe;
     } catch (error) {
       console.error('Error listening to photos:', error);
+    }
+  };
+
+  const listenToCurses = async () => {
+    try {
+      const db = getDatabase(firebaseApp);
+      const cursesRef = ref(db, `games/${gameId}/curses`);
+
+      const unsubscribe = onValue(cursesRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const cursesArray = Object.entries(data || {}).map(([id, curse]) => ({
+            id,
+            ...(curse as any)
+          }));
+          setCurses(cursesArray);
+        }
+      });
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error listening to curses:', error);
     }
   };
 
@@ -1589,6 +1613,21 @@ export default function GameMapScreen() {
               console.log('Creating curse notification:', curseNotification);
               await set(notificationRef, curseNotification);
               
+              // Store curse in curses collection for the feed
+              const cursesRef = ref(db, `games/${gameId}/curses`);
+              const curseRef = push(cursesRef);
+              const curseData = {
+                name: curse.name,
+                description: curse.description,
+                usedBy: currentPlayer?.name || 'Unknown Player',
+                usedById: deviceId,
+                role: currentPlayer?.role || 'hider',
+                timestamp: new Date().toISOString(),
+                coinsSpent: curseCost,
+                effectiveness: curse.effectiveness || 'Unknown'
+              };
+              await set(curseRef, curseData);
+              
               setCoins(newCoinTotal);
               setShowHiderMenu(false);
               
@@ -2003,6 +2042,41 @@ export default function GameMapScreen() {
                         {photo.uploadedBy} ({photo.role})
                       </Text>
                     </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Curse Feed */}
+            {curses.length > 0 && (
+              <View style={styles.curseGallery}>
+                <Text style={styles.curseGalleryTitle}>Recent Curses ({curses.length})</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.curseScrollView}
+                >
+                  {curses.slice(-5).reverse().map((curse, index) => (
+                    <View 
+                      key={curse.id || index} 
+                      style={styles.curseFeedItem}
+                    >
+                      <View style={styles.curseFeedIcon}>
+                        <Text style={styles.curseFeedIconText}>⚡</Text>
+                      </View>
+                      <Text style={styles.curseFeedName}>
+                        {curse.name}
+                      </Text>
+                      <Text style={styles.curseFeedDescription}>
+                        {curse.description}
+                      </Text>
+                      <Text style={styles.curseFeedUsedBy}>
+                        Used by: {curse.usedBy} ({curse.role})
+                      </Text>
+                      <Text style={styles.curseFeedCost}>
+                        💰 {curse.coinsSpent} coins
+                      </Text>
+                    </View>
                   ))}
                 </ScrollView>
               </View>
@@ -3267,6 +3341,75 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     textAlign: 'center',
     padding: 20,
+  },
+  // Curse feed styles
+  curseGallery: {
+    backgroundColor: '#FEF2F2',
+    padding: 16,
+    marginTop: 8,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#EF4444',
+  },
+  curseGalleryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#DC2626',
+    marginBottom: 12,
+  },
+  curseScrollView: {
+    flexDirection: 'row',
+  },
+  curseFeedItem: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    padding: 12,
+    marginRight: 12,
+    minWidth: 200,
+    maxWidth: 250,
+    alignItems: 'center',
+  },
+  curseFeedIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  curseFeedIconText: {
+    fontSize: 20,
+  },
+  curseFeedName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#DC2626',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  curseFeedDescription: {
+    fontSize: 12,
+    color: '#7F1D1D',
+    textAlign: 'center',
+    lineHeight: 16,
+    marginBottom: 6,
+  },
+  curseFeedUsedBy: {
+    fontSize: 11,
+    color: '#991B1B',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  curseFeedCost: {
+    fontSize: 11,
+    color: '#F59E0B',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   // Curse alert modal styles
   curseAlertOverlay: {

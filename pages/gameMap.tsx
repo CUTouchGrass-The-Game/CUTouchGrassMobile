@@ -30,6 +30,7 @@ import { getStoredDeviceId } from '../util/deviceId';
 interface GameLocation {
   latitude: number;
   longitude: number;
+  altitude: number;
   timestamp: string;
   playerId: string;
   playerName: string;
@@ -43,25 +44,22 @@ const QUESTION_CATEGORIES = {
     coins: 40,
     color: "#3B82F6",
     questions: [
-      "Are you north or south of the seeker's current latitude?",
-      "Are you east or west of the seeker's current longitude?",
-      "Are the seekers heading in the direction of your current location?",
-      "What cardinal direction are you from the seeker?",
-      "Are you closer to the seeker's starting position or current position?"
+      "Are you north or south of the seeker's current position?",
+      "Are you east or west of the seeker's current position?",
+      "Is you elevation higher or lower than the seeker's?",
     ]
   },
   location: {
     name: "Location",
     icon: "📍",
-    coins: 40,
+    coins: 30,
     color: "#10B981",
     questions: [
-      "What is the name of the nearest library to you?",
-      "What is the name of the nearest eatery location to you?",
-      "What is the name of the nearest park to you?",
-      "What is the name of the nearest shopping center to you?",
-      "What is the name of the nearest landmark to you?"
-    ]
+      "Is the library closest to you the same as mine?",
+      "Is the eatery location closest to you the same as mine?",
+      "Can you see a natural water formation right now?",
+      "Are you above the ground floor in a building?"
+    ],
   },
   radar: {
     name: "Radar",
@@ -69,11 +67,10 @@ const QUESTION_CATEGORIES = {
     coins: 30,
     color: "#F59E0B",
     questions: [
-      "Are you within 100ft, 500ft, 1000ft or 2000ft of me?",
-      "How many city blocks away are you from me?",
-      "Are you within walking distance (5 minutes) of me?",
-      "Can you see me from your current location?",
-      "Are you closer to me than to the nearest bus stop?"
+      "Are you within 100ft of me?",
+      "Are you within 500ft of me?",
+      "Are you within 1000ft of me?",
+      "Are you within 2000ft of me?",
     ]
   },
   media: {
@@ -94,7 +91,6 @@ const QUESTION_CATEGORIES = {
     coins: 20,
     color: "#8B5CF6",
     questions: [
-      "Coming soon...",
       "AI-generated questions will appear here",
       "Stay tuned for dynamic content!"
     ]
@@ -462,6 +458,7 @@ export default function GameMapScreen() {
       const locationData = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
+        altitude: location.coords.altitude,
         timestamp: new Date().toISOString(),
         playerId: deviceId,
         playerName: playerName
@@ -1032,6 +1029,60 @@ export default function GameMapScreen() {
         }
       ]
     );
+  };
+
+  // Haversine
+  const calculateDistance = (lat1 : number, lon1 : number, lat2 : number, lon2 : number) => {
+    // Convert degrees to approximate meters (rough approximation)
+    const latDifferenceInMeters = (lat1 - lat2) * 111320; // 1 degree lat ≈ 111,320 meters
+    const lonDifferenceInMeters = (lon1 - lon2) * 111320 * Math.cos(lat2 * Math.PI / 180);
+    
+    // Use Pythagorean theorem: distance = sqrt(x² + y²)
+    const distanceInMeters = Math.sqrt(
+      latDifferenceInMeters * latDifferenceInMeters + 
+      lonDifferenceInMeters * lonDifferenceInMeters
+  );
+  
+  return distanceInMeters;
+  };
+  
+  const getDisplayQuestion = () => {
+    if (!currentQuestion) return null;
+    
+    // Only modify radar questions and only for hiders
+    if (playerRole === 'hider' && currentQuestionCategory === 'radar' && location && gameLocations.length > 0) {
+      // Find the seeker's location
+      const seekerLocation = gameLocations.find(loc => loc.playerId !== currentPlayer?.deviceId);
+      
+      if (seekerLocation) {
+        const distance = calculateDistance(
+          seekerLocation.latitude, 
+          seekerLocation.longitude, 
+          location.coords.latitude, 
+          location.coords.longitude
+        );
+        const distanceInFeet = Math.round(distance * 3.28084);
+        return `${currentQuestion} (You are approximately ${distanceInFeet} feet from the seeker; less accurate at close ranges)`;
+      }
+    }
+
+    // Only modify elevation question
+    if (playerRole === 'hider' && currentQuestion === 'Is you elevation higher or lower than the seeker\'s?' && location && gameLocations.length > 0) {
+      // Find the seeker's location
+      const seekerLocation = gameLocations.find(loc => loc.playerId !== currentPlayer?.deviceId);
+
+      if (seekerLocation) {
+        const distance = (location.coords.altitude || 0) - (seekerLocation.altitude || 0);
+        const distanceInFeet = Math.round(distance * 3.28084);
+        if (distanceInFeet > 0) {
+          return `${currentQuestion} (You are ${distanceInFeet} feet higher than the seeker)`;
+        } else {
+          return `${currentQuestion} (You are ${-distanceInFeet} feet lower than the seeker)`;
+        }
+      }
+    }
+    
+    return currentQuestion;
   };
 
   // Seeker functions
@@ -1836,7 +1887,7 @@ export default function GameMapScreen() {
                           </View>
                         )}
                       </View>
-                    <Text style={styles.questionContent}>"{currentQuestion}"</Text>
+                    <Text style={styles.questionContent}>"{getDisplayQuestion()}"</Text>
                     
                     {/* Answer Type Toggle */}
                     <View style={styles.answerTypeToggle}>

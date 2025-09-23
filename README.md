@@ -1,50 +1,26 @@
-# Welcome to your Expo app 👋
+# CU Touch Grass: The Game
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Copied below from [BigRed//Hacks 2025](https://devpost.com/software/cu-touch-grass-the-game) 24 hour hackathon. Demo video [here](https://youtu.be/p65FOGTRO6Y).
 
-## Get started
+## Inspiration
+We originally cycled through a bunch of ideas, but we ultimately settled on a life-size strategy game of hide and seek inspired by the popular YouTube channel Jet Lag: The Game. They recently created a board game version of their series, but most of the time playing is spent switching through multiple phone apps. This project seeks to invoke a similar experience through one fully digital platform to solve issues in the original and add new gameplay twists.
 
-1. Install dependencies
+## What it does
+The goal of the game is for the seeker to find the hider within the time limit or for the hider to outlast the seeker. During their search, the seeker can ask questions to the hider that reveals some information about their location. However, each question asked gives the hider points and they can use that to purchase curses, which slow down the seeker pursuit. If the hider is not found within the allotted time then they win; otherwise the seeker wins. Our app has game creation and joining tools to connect players seamlessly. An integrated map easily coordinates sharing information between players like real-time location updates and photo sharing without the hassles of third-party apps like _Life360_ or _WhatsApp_. Quick calculations in the code make answering questions like radar and altitude easy. Challenges and curses, gameplay elements that grant the seekers information and the hiders initiative, are also integrated directly into the app streamlining the experience. This allows players to focus on the most important part of the game: the strategy, rather than the logistics. Our adapted game design with reduced questions from a larger pool also works better for smaller, more accessible games compared to the sprawling country-wide games Jet Lag tends to play. We further innovated on the game by giving Gemini AI it's own special category of questions that are generated contextually on-the-fly, shaking up strategies and ensuring each game is completely unique.
 
-   ```bash
-   npm install
-   ```
+## How we built it
+We built the app as a cross-platform mobile experience using React Native and Expo, which let us quickly prototype and test our product. We utilized Firebase's real-team database feature for authenticating devices, game state synchronization, and data sharing between players; to power the map, OpenStreetMap API let us record the location of the player and display overlays of the game state over the real life play space, lending seekers and hiders an intuitive shared view of the game world. We also connected to Google Gemini AI via API calls, generating on-the-fly contextual questions and curses for a little bit of extra silliness that could influence strategy. AI was a huge risk-reward factor that encouraged more unique and interesting play.
 
-2. Start the app
+We also designed our own logic layer in JavaScript to handle gameplay logic like challenge/curse mechanics, game joining/lobby logic, and photo sharing/messaging, just to name a few. The frontend and backend communicate both locally and through Firebase in near-real time, so players always stay in sync without having to juggle multiple apps. We took an iterative approach to development, starting barebones and building up each individual element until we had a system and gameplay loop we were satisfied with.
 
-   ```bash
-   npx expo start
-   ```
+## Challenges we ran into
+This was all of our members' first hackathon, and thus we had little experience running a project on such a time crunch. We were also relatively new to utilizing generative AI while programming, but felt it was necessary to build our project. While we indeed do believe it was indispensable to our process, many downsides came from our generally disjointed and messy code base as we were not as neat and tidy as we may be in, say, a CS assignment. This led to a lot of time spent debugging rather than building; with more of that time reclaimed, we may have been able to include more mechanics. This time crunch was exacerbated by multiple club interviews we had to attend as Cornell University students.
 
-In the output, you'll find options to open the app in a
+## Accomplishments that we're proud of
+We were gladly surprised by the amount of features we were able to implement in such a short amount of time. A lot of the ideas we had in mind during the brainstorming period of the hackathon were able to make it to the final product. We were also proud of the uniqueness of our idea; we felt passionate and interested in actually completing a multiplayer game that encourages strategic thinking, incorporates physical activity, and is very fun for the players. Additionally, being able to incorporate Google Gemini made our game truly each play. Finally, as our first hackathon, we are pleased that we created something cohesive and well designed, owing to the fact that we were able to work as a team effectively.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## What we learned
+We learned the differences between the fast-paced nature of a hackathon and prototyping compared to the detailed rigor of coursework and more robust long-term projects. It’s more about hacking something together than going for perfection. None of us had much experience with tools like React Native, Expo, or Firebase going in, so we also had to contend with picking them up on the fly. This helped us train our ability to stay cool and think on our feet. We also learned how valuable it is to plan features iteratively, communicate clearly, and not be afraid to try something even if it fails. Most importantly, we learned to have confidence that we can build something meaningful and fun even when starting from scratch with unfamiliar tools during a high pressure situation.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## What's next for CU Touch Grass: The Game
+In the future, we will definitely add features that work in the background, even if the app is closed, such as constant location tracking and system level notifications. Markings on the map based on the hider's answers to the questions could also be a good addition to streamline the experience. Content-wise, we would design more questions and curses to be randomly drawn from. Furthermore, we would also like to expand our game as to be adaptable to different locations. Finally, a bit of polish would be nice - some of the UI elements are a bit repetitive, so cutting down redundancy and simplifying the interface would make the entire game more intuitive.
